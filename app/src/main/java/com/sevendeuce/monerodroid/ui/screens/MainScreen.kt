@@ -454,7 +454,7 @@ fun StorageSection(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "STORAGE CAPACITY",
+                text = "CAPACITY",
                 color = TextWhite,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
