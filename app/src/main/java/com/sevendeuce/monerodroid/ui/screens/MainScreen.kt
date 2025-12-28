@@ -120,7 +120,8 @@ fun MainScreen(
                 currentHeight = nodeState.currentHeight,
                 targetHeight = nodeState.targetHeight,
                 isRunning = nodeState.isRunning,
-                nodeVersion = nodeState.nodeVersion
+                nodeVersion = nodeState.nodeVersion,
+                localIpAddress = nodeState.localIpAddress
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -592,7 +593,8 @@ fun PeerSyncStatusCard(
     currentHeight: Long,
     targetHeight: Long,
     isRunning: Boolean,
-    nodeVersion: String
+    nodeVersion: String,
+    localIpAddress: String = ""
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -680,7 +682,39 @@ fun PeerSyncStatusCard(
                         )
                     }
                 }
+
+                if (localIpAddress.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row {
+                        Text(
+                            text = "LOCAL IP: ",
+                            color = TextWhite,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "$localIpAddress:18081",
+                            color = MoneroOrange,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             } else {
+                if (localIpAddress.isNotEmpty()) {
+                    Row {
+                        Text(
+                            text = "LOCAL IP: ",
+                            color = TextGray,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = localIpAddress,
+                            color = TextGray,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 Text(
                     text = "Node is not running",
                     color = TextGray,

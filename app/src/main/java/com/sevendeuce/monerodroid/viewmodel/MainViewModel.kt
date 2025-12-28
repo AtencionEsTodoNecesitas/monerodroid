@@ -5,10 +5,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.NetworkCapabilities
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import com.sevendeuce.monerodroid.data.NodeState
 import com.sevendeuce.monerodroid.data.StorageLocation
 import com.sevendeuce.monerodroid.service.NodeService
@@ -95,8 +100,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         checkBinaryStatus()
         updateStorageInfo()
+        updateLocalIpAddress()
         startStatusPolling()
         checkArchitecture()
+    }
+
+    private fun getLocalIpAddress(): String {
+        try {
+            // Try using ConnectivityManager first (preferred on newer Android)
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork
+            val linkProperties = connectivityManager.getLinkProperties(activeNetwork)
+
+            linkProperties?.linkAddresses?.forEach { linkAddress ->
+                val address = linkAddress.address
+                if (address is Inet4Address && !address.isLoopbackAddress) {
+                    return address.hostAddress ?: ""
+                }
+            }
+
+            // Fallback to NetworkInterface enumeration
+            NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { networkInterface ->
+                if (networkInterface.isUp && !networkInterface.isLoopback) {
+                    networkInterface.inetAddresses.toList().forEach { address ->
+                        if (address is Inet4Address && !address.isLoopbackAddress) {
+                            return address.hostAddress ?: ""
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting local IP address", e)
+        }
+        return ""
+    }
+
+    private fun updateLocalIpAddress() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ip = getLocalIpAddress()
+            _nodeState.update { it.copy(localIpAddress = ip) }
+        }
     }
 
     private fun checkArchitecture() {
@@ -165,9 +208,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Update storage info less frequently (every 30 seconds)
                 delay(3000) // Poll every 3 seconds for responsive UI
 
-                // Update storage every 10th poll (every 30s)
+                // Update storage and IP every 10th poll (every 30s)
                 if (System.currentTimeMillis() % 30000 < 3000) {
                     updateStorageInfo()
+                    updateLocalIpAddress()
                 }
             }
         }
@@ -183,14 +227,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Still syncing
                 (info.height.toFloat() / info.targetHeight * 100).coerceAtMost(99.9f)
             }
+
             info.targetHeight > 0 && info.height >= info.targetHeight -> {
                 // Fully synced
                 100f
             }
+
             info.height > 1000 && info.targetHeight == 0L -> {
                 // Likely synced (targetHeight becomes 0 when fully synced)
                 100f
             }
+
             else -> {
                 // Starting up / discovering peers
                 0f

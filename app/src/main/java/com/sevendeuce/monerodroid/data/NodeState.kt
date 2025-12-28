@@ -20,7 +20,8 @@ data class NodeState(
     val isInitializing: Boolean = false,
     val isStopping: Boolean = false,
     val isPruned: Boolean = true,
-    val startTime: Long = 0
+    val startTime: Long = 0,
+    val localIpAddress: String = ""
 ) {
     val isSynced: Boolean
         get() = syncProgress >= 99.9f && currentHeight > 0
