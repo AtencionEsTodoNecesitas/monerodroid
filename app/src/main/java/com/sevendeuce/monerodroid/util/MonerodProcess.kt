@@ -181,33 +181,44 @@ class MonerodProcess(private val context: Context) {
                 Log.d(TAG, "RPC stop failed: ${e.message}")
             }
 
-            // Wait for graceful shutdown (up to 20 seconds)
+            // Wait for graceful shutdown (only 3 seconds - monerod during sync rarely stops gracefully)
             var attempts = 0
-            while (attempts < 20) {
+            while (attempts < 3) {
                 delay(1000)
                 attempts++
 
-                val processAlive = try { process?.isAlive == true } catch (e: Exception) { false }
-                val processRunning = try { isProcessRunningByName() } catch (e: Exception) { false }
+                val processAlive = try {
+                    process?.isAlive == true
+                } catch (e: Exception) {
+                    false
+                }
+                val processRunning = try {
+                    isProcessRunningByName()
+                } catch (e: Exception) {
+                    false
+                }
 
                 if (!processAlive && !processRunning) {
-                    Log.d(TAG, "Process stopped after $attempts seconds")
-                    break
+                    Log.d(TAG, "Process stopped gracefully after $attempts seconds")
+                    process = null
+                    return@withContext Result.success(Unit)
                 }
-                Log.d(TAG, "Waiting for process to stop... attempt $attempts")
+                Log.d(TAG, "Waiting for graceful stop... attempt $attempts")
             }
 
-            // If still running, try to destroy our process handle
+            // Force kill - use destroy() first, then destroyForcibly()
+            Log.d(TAG, "Graceful shutdown timed out, force killing...")
+
             try {
                 if (process?.isAlive == true) {
                     Log.d(TAG, "Force stopping process via destroy()")
                     process?.destroy()
-                    delay(3000)
+                    delay(2000)
 
                     if (process?.isAlive == true) {
                         Log.d(TAG, "Using destroyForcibly()")
                         process?.destroyForcibly()
-                        delay(2000)
+                        delay(1000)
                     }
                 }
             } catch (e: Exception) {
@@ -216,7 +227,7 @@ class MonerodProcess(private val context: Context) {
 
             process = null
 
-            Log.d(TAG, "Monerod stopped")
+            Log.d(TAG, "Monerod force stopped")
             Result.success(Unit)
 
         } catch (e: Exception) {

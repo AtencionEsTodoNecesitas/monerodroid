@@ -220,26 +220,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun updateStateFromRpc(info: com.sevendeuce.monerodroid.data.GetInfoResult) {
         // Calculate sync progress properly:
         // - If targetHeight > height, we're syncing: progress = height/targetHeight
-        // - If targetHeight == 0 and height > 1000, node is likely synced (targetHeight becomes 0 when synced)
-        // - If height is very low (< 1000) and targetHeight is 0, we're still discovering peers
+        // - If targetHeight == 0 and height > 1000 AND we have peers, node is likely synced
+        // - If we have no peers or low height, we're still connecting/discovering
+        val totalPeers = info.outgoingConnectionsCount + info.incomingConnectionsCount
+
         val syncProgress = when {
+            // Still syncing - target is ahead of current height
             info.targetHeight > info.height -> {
-                // Still syncing
                 (info.height.toFloat() / info.targetHeight * 100).coerceAtMost(99.9f)
             }
 
+            // Fully synced - we've reached or passed target height
             info.targetHeight > 0 && info.height >= info.targetHeight -> {
-                // Fully synced
                 100f
             }
 
-            info.height > 1000 && info.targetHeight == 0L -> {
-                // Likely synced (targetHeight becomes 0 when fully synced)
+            // Likely synced - targetHeight becomes 0 when fully synced
+            // BUT only if we have peers (otherwise we might just not have internet)
+            info.height > 1000 && info.targetHeight == 0L && totalPeers > 0 -> {
                 100f
             }
 
+            // No peers or just starting - show 0% (not connected/synced)
             else -> {
-                // Starting up / discovering peers
                 0f
             }
         }
@@ -358,9 +361,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 NodeService.stopService(context)
             }
 
-            // Wait for the node to actually stop (up to 25 seconds)
+            // Wait for the node to actually stop (max 8 seconds - force kill happens in MonerodProcess after 3s)
             var attempts = 0
-            while (attempts < 25) {
+            while (attempts < 8) {
                 delay(1000)
                 attempts++
 
@@ -377,8 +380,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // Additional delay to ensure process cleanup
-            delay(2000)
+            // Brief delay to ensure UI updates cleanly
+            delay(500)
 
             withContext(Dispatchers.Main) {
                 _nodeState.update {
