@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.*
@@ -391,7 +392,7 @@ class MonerodBinaryManager(private val context: Context) {
             val process = ProcessBuilder(
                 "sh", "-c",
                 "cd ${context.cacheDir.absolutePath} && " +
-                "bzcat ${archiveFile.absolutePath} | tar -xf - -C ${extractDir.absolutePath}"
+                        "bzcat ${archiveFile.absolutePath} | tar -xf - -C ${extractDir.absolutePath}"
             ).redirectErrorStream(true).start()
 
             val output = process.inputStream.bufferedReader().readText()
@@ -425,10 +426,11 @@ class MonerodBinaryManager(private val context: Context) {
      * Check for updates and optionally get latest version info
      * Uses the Monero downloads page to check latest version
      */
-    suspend fun checkForUpdate(): UpdateStatus {
-        val currentVersion = getBinaryVersion() ?: return UpdateStatus.Error("Cannot determine current version")
+    suspend fun checkForUpdate(): UpdateStatus = withContext(Dispatchers.IO) {
+        val currentVersion =
+            getBinaryVersion() ?: return@withContext UpdateStatus.Error("Cannot determine current version")
 
-        return try {
+        try {
             // Fetch the latest version from getmonero.org downloads page
             val request = Request.Builder()
                 .url("https://downloads.getmonero.org/cli/linux64")
