@@ -552,7 +552,7 @@ fun StorageProgressBar(
     usedPercent: Int
 ) {
     Column(
-        horizontalAlignment = Alignment.End
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
