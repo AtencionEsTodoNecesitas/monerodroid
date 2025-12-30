@@ -15,3 +15,8 @@
 local.properties
 .idea
 .kotlin
+-e 
+# Keystore files
+release-keystore.jks
+keystore.b64
+.env

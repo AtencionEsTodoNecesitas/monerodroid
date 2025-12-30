@@ -66,7 +66,7 @@ MoneroDroid requires the following permissions:
 
 ### Download APK
 
-Download the latest release from the [Releases](https://github.com/sevendeuce/monerodroid/releases) page.
+Download the latest release from the [Releases](https://github.com/AtencionEsTodoNecesitas/monerodroid/releases) page.
 
 ### Install
 
