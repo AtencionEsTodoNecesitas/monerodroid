@@ -41,6 +41,8 @@ fun MainScreen(
     nodeState: NodeState,
     binaryStatus: BinaryStatus,
     isExternalAvailable: Boolean,
+    rpcUsername: String = "",
+    rpcPassword: String = "",
     onStorageToggle: (Boolean) -> Unit,
     onStartStopToggle: () -> Unit,
     onDownloadBinary: () -> Unit,
@@ -189,7 +191,9 @@ fun MainScreen(
             NetworkInfoCard(
                 localIpAddress = nodeState.localIpAddress,
                 nodeVersion = nodeState.nodeVersion,
-                isRunning = nodeState.isRunning
+                isRunning = nodeState.isRunning,
+                rpcUsername = rpcUsername,
+                rpcPassword = rpcPassword
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -492,50 +496,142 @@ fun StatCard(
 fun NetworkInfoCard(
     localIpAddress: String,
     nodeVersion: String,
-    isRunning: Boolean
+    isRunning: Boolean,
+    rpcUsername: String = "",
+    rpcPassword: String = ""
 ) {
+    var showSensitiveInfo by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp)
         ) {
-            Column {
-                Text(
-                    text = "LOCAL IP",
-                    color = TextGray,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = if (localIpAddress.isNotEmpty()) {
-                        if (isRunning) "$localIpAddress:18081" else localIpAddress
-                    } else "--",
-                    color = if (isRunning) MoneroOrange else TextWhite,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Column(
-                horizontalAlignment = Alignment.End
+            // Header with SHOW/HIDE toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "VERSION",
+                    text = "CONNECTION INFO",
                     color = TextGray,
                     fontSize = 10.sp,
                     letterSpacing = 1.sp
                 )
                 Text(
-                    text = nodeVersion.ifEmpty { "--" },
-                    color = TextWhite,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    text = if (showSensitiveInfo) "HIDE" else "SHOW",
+                    color = MoneroOrange,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { showSensitiveInfo = !showSensitiveInfo }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "LOCAL IP",
+                        color = TextGray,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = if (showSensitiveInfo) {
+                            if (localIpAddress.isNotEmpty()) {
+                                if (isRunning) "$localIpAddress:18081" else localIpAddress
+                            } else "--"
+                        } else {
+                            "***.***.***"
+                        },
+                        color = if (isRunning && showSensitiveInfo) MoneroOrange else TextWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = "VERSION",
+                        color = TextGray,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = nodeVersion.ifEmpty { "--" },
+                        color = TextWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // RPC Credentials section
+            if (rpcUsername.isNotEmpty() && rpcPassword.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = TextGray.copy(alpha = 0.3f), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "RPC LOGIN",
+                    color = TextGray,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                if (showSensitiveInfo) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "USER",
+                                color = TextGray,
+                                fontSize = 9.sp
+                            )
+                            Text(
+                                text = rpcUsername,
+                                color = MoneroOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                text = "PASS",
+                                color = TextGray,
+                                fontSize = 9.sp
+                            )
+                            Text(
+                                text = rpcPassword,
+                                color = MoneroOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Tap SHOW to reveal credentials",
+                        color = TextGray,
+                        fontSize = 11.sp
+                    )
+                }
             }
         }
     }

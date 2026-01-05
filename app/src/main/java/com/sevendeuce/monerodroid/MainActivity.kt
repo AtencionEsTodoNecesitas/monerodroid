@@ -164,6 +164,8 @@ fun MoneroDroidApp(
     val pruneBlockchain by viewModel.pruneBlockchain.collectAsState()
     val startOnBoot by viewModel.startOnBoot.collectAsState()
     val updateStatus by viewModel.updateStatus.collectAsState()
+    val rpcUsername by viewModel.rpcUsername.collectAsState()
+    val rpcPassword by viewModel.rpcPassword.collectAsState()
 
     // Handle back button when in settings
     BackHandler(enabled = showSettings) {
@@ -204,6 +206,8 @@ fun MoneroDroidApp(
                     nodeState = nodeState,
                     binaryStatus = binaryStatus,
                     isExternalAvailable = viewModel.isExternalStorageAvailable(),
+                    rpcUsername = rpcUsername,
+                    rpcPassword = rpcPassword,
                     onStorageToggle = viewModel::setUseExternalStorage,
                     onStartStopToggle = {
                         if (nodeState.isRunning) {

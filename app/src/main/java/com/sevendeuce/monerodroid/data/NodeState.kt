@@ -74,5 +74,7 @@ data class NodeConfig(
     val noZmq: Boolean = true,
     val noIgd: Boolean = true,
     val enableDnsBlocklist: Boolean = true,
-    val disableDnsCheckpoints: Boolean = true
+    val disableDnsCheckpoints: Boolean = true,
+    val rpcUsername: String = "monero",
+    val rpcPassword: String = ""
 )

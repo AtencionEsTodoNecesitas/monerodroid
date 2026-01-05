@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Credentials
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -22,7 +23,9 @@ import javax.net.ssl.X509TrustManager
 
 class NodeRpcClient(
     private val host: String = "127.0.0.1",
-    private val port: Int = 18081
+    private val port: Int = 18081,
+    private var username: String = "",
+    private var password: String = ""
 ) {
     companion object {
         private const val TAG = "NodeRpcClient"
@@ -60,6 +63,11 @@ class NodeRpcClient(
     private fun getRpcUrl(): String = "https://$host:$port/json_rpc"
 
     private fun getHttpRpcUrl(): String = "http://$host:$port/json_rpc"
+
+    fun setCredentials(username: String, password: String) {
+        this.username = username
+        this.password = password
+    }
 
     suspend fun getInfo(): Result<GetInfoResult> = withContext(Dispatchers.IO) {
         try {
@@ -128,10 +136,16 @@ class NodeRpcClient(
 
         for (url in urls) {
             try {
-                val httpRequest = Request.Builder()
+                val httpRequestBuilder = Request.Builder()
                     .url(url)
                     .post(requestBody)
-                    .build()
+
+                // Add authentication if credentials are set
+                if (username.isNotEmpty() && password.isNotEmpty()) {
+                    httpRequestBuilder.header("Authorization", Credentials.basic(username, password))
+                }
+
+                val httpRequest = httpRequestBuilder.build()
 
                 val response = okHttpClient.newCall(httpRequest).execute()
                 val responseBody = response.body?.string() ?: ""

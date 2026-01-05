@@ -61,6 +61,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         true
     )
 
+    val rpcUsername = configManager.rpcUsername.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "monero"
+    )
+
+    val rpcPassword = configManager.rpcPassword.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        ""
+    )
+
     val startOnBoot = configManager.startOnBoot.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -101,8 +113,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         checkBinaryStatus()
         updateStorageInfo()
         updateLocalIpAddress()
+        initRpcCredentials()
         startStatusPolling()
         checkArchitecture()
+    }
+
+    private fun initRpcCredentials() {
+        viewModelScope.launch {
+            val username = configManager.rpcUsername.first()
+            val password = configManager.generateRpcPasswordIfNeeded()
+            rpcClient.setCredentials(username, password)
+        }
     }
 
     private fun getLocalIpAddress(): String {

@@ -25,6 +25,8 @@ class ConfigManager(private val context: Context) {
         private val KEY_RESTRICTED_RPC_PORT = intPreferencesKey("restricted_rpc_port")
         private val KEY_CUSTOM_FLAGS = stringPreferencesKey("custom_flags")
         private val KEY_FIRST_RUN = booleanPreferencesKey("first_run")
+        private val KEY_RPC_USERNAME = stringPreferencesKey("rpc_username")
+        private val KEY_RPC_PASSWORD = stringPreferencesKey("rpc_password")
     }
 
     val useExternalStorage: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -45,6 +47,14 @@ class ConfigManager(private val context: Context) {
 
     val isFirstRun: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_FIRST_RUN] ?: true
+    }
+
+    val rpcUsername: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_RPC_USERNAME] ?: "monero"
+    }
+
+    val rpcPassword: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_RPC_PASSWORD] ?: ""
     }
 
     suspend fun setUseExternalStorage(value: Boolean) {
@@ -77,15 +87,41 @@ class ConfigManager(private val context: Context) {
         }
     }
 
+    suspend fun setRpcCredentials(username: String, password: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_RPC_USERNAME] = username
+            prefs[KEY_RPC_PASSWORD] = password
+        }
+    }
+
+    suspend fun generateRpcPasswordIfNeeded(): String {
+        val currentPassword = rpcPassword.first()
+        if (currentPassword.isEmpty()) {
+            val newPassword = generateSecurePassword()
+            setRpcCredentials("monero", newPassword)
+            return newPassword
+        }
+        return currentPassword
+    }
+
+    private fun generateSecurePassword(): String {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+        return (1..16).map { chars.random() }.joinToString("")
+    }
+
     suspend fun getNodeConfig(): NodeConfig {
         val prefs = context.dataStore.data.first()
+        // Generate password if not exists
+        val password = generateRpcPasswordIfNeeded()
         return NodeConfig(
             pruneBlockchain = prefs[KEY_PRUNE_BLOCKCHAIN] ?: true,
             p2pBindPort = prefs[KEY_P2P_PORT] ?: 18080,
             rpcBindPort = prefs[KEY_RPC_PORT] ?: 18081,
             restrictedRpcPort = prefs[KEY_RESTRICTED_RPC_PORT] ?: 18089,
             outPeers = prefs[KEY_OUT_PEERS] ?: 32,
-            inPeers = prefs[KEY_IN_PEERS] ?: 32
+            inPeers = prefs[KEY_IN_PEERS] ?: 32,
+            rpcUsername = prefs[KEY_RPC_USERNAME] ?: "monero",
+            rpcPassword = password
         )
     }
 
@@ -110,9 +146,13 @@ p2p-bind-port=${config.p2pBindPort}
 rpc-restricted-bind-ip=0.0.0.0
 rpc-restricted-bind-port=${config.restrictedRpcPort}
 
-# Unrestricted RPC binds (local only)
-rpc-bind-ip=127.0.0.1
+# Unrestricted RPC binds (all interfaces with authentication)
+rpc-bind-ip=0.0.0.0
 rpc-bind-port=${config.rpcBindPort}
+confirm-external-bind=1
+
+# RPC Authentication (required for external access)
+rpc-login=${config.rpcUsername}:${config.rpcPassword}
 
 # Services
 rpc-ssl=autodetect
