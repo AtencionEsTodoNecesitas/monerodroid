@@ -113,16 +113,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         checkBinaryStatus()
         updateStorageInfo()
         updateLocalIpAddress()
-        initRpcCredentials()
-        startStatusPolling()
+        initRpcCredentialsAndStartPolling()
         checkArchitecture()
     }
 
-    private fun initRpcCredentials() {
+    private fun initRpcCredentialsAndStartPolling() {
         viewModelScope.launch {
+            // Initialize RPC credentials first
             val username = configManager.rpcUsername.first()
             val password = configManager.generateRpcPasswordIfNeeded()
             rpcClient.setCredentials(username, password)
+
+            // Then start polling
+            startStatusPolling()
         }
     }
 
