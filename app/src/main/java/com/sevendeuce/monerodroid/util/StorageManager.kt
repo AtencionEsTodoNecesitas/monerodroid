@@ -105,6 +105,15 @@ class StorageManager(private val context: Context) {
         } else {
             getInternalStorageInfo()
         }
+
+        // Check if blockchain already exists - if so, only need minimal space for operations
+        val dataDir = getMoneroDataDir(useExternal)
+        val lmdbFile = File(dataDir, "lmdb/data.mdb")
+        if (lmdbFile.exists() && lmdbFile.length() > 1_000_000_000) { // >1GB means blockchain exists
+            // Only need 5GB free for ongoing operations when blockchain already synced
+            return storageInfo.freeGb >= 5f
+        }
+
         return storageInfo.hasAdequateStorage(isPruned)
     }
 
