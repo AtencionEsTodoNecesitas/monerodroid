@@ -2,6 +2,7 @@ package com.sevendeuce.monerodroid.util
 
 import android.content.Context
 import android.util.Log
+import com.sevendeuce.monerodroid.data.NodeConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.io.File
@@ -19,6 +20,25 @@ class MonerodProcess(private val context: Context) {
     private val rpcClient = NodeRpcClient()
 
     private var process: Process? = null
+    private var credentialsInitialized = false
+
+    private suspend fun ensureRpcCredentials(config: NodeConfig? = null) {
+        if (!credentialsInitialized || config != null) {
+            val username: String
+            val password: String
+            if (config != null) {
+                // Use credentials from config to ensure consistency
+                username = config.rpcUsername
+                password = config.rpcPassword
+            } else {
+                username = configManager.rpcUsername.first()
+                password = configManager.generateRpcPasswordIfNeeded()
+            }
+            rpcClient.setCredentials(username, password)
+            credentialsInitialized = true
+            Log.d(TAG, "RPC credentials initialized: user=$username")
+        }
+    }
 
     val isRunning: Boolean
         get() = try {
@@ -74,6 +94,9 @@ class MonerodProcess(private val context: Context) {
             val config = configManager.getNodeConfig()
             val configFile = storageManager.getConfigFilePath()
             configManager.writeConfigFile(configFile, dataDir.absolutePath, config)
+
+            // Initialize RPC credentials IMMEDIATELY after writing config to ensure they match
+            ensureRpcCredentials(config)
 
             Log.d(TAG, "Starting monerod with config: ${configFile.absolutePath}")
             Log.d(TAG, "Data directory: ${dataDir.absolutePath}")
@@ -147,6 +170,7 @@ class MonerodProcess(private val context: Context) {
                     return@withContext Result.failure(Exception("Monerod exited with code: $exitCode"))
                 }
 
+                ensureRpcCredentials()
                 if (rpcClient.isNodeRunning()) {
                     Log.d(TAG, "Node is responding to RPC")
                     return@withContext Result.success(Unit)
@@ -175,6 +199,7 @@ class MonerodProcess(private val context: Context) {
 
             // Try graceful shutdown via RPC first
             try {
+                ensureRpcCredentials()
                 rpcClient.stopDaemon()
                 Log.d(TAG, "Sent stop command via RPC")
             } catch (e: Exception) {

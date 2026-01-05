@@ -9,11 +9,13 @@ import com.sevendeuce.monerodroid.data.RpcResponse
 import com.sevendeuce.monerodroid.data.SyncInfoResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Authenticator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Credentials
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.Route
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
@@ -34,30 +36,38 @@ class NodeRpcClient(
 
     private val gson = Gson()
 
-    // Create a trust-all client for local connections (self-signed certs)
-    private val okHttpClient: OkHttpClient by lazy {
-        try {
-            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-            })
+    // Mutable client that gets rebuilt when credentials change
+    private var okHttpClient: OkHttpClient? = null
 
-            val sslContext = SSLContext.getInstance("SSL")
-            sslContext.init(null, trustAllCerts, SecureRandom())
+    private fun getOrCreateClient(): OkHttpClient {
+        val existingClient = okHttpClient
+        if (existingClient != null) return existingClient
 
-            OkHttpClient.Builder()
-                .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-                .hostnameVerifier { _, _ -> true }
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build()
-        } catch (e: Exception) {
-            OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build()
+        return buildClient().also { okHttpClient = it }
+    }
+
+    private fun buildClient(): OkHttpClient {
+        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+
+        val sslContext = SSLContext.getInstance("SSL")
+        sslContext.init(null, trustAllCerts, SecureRandom())
+
+        val builder = OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+
+        // Add Digest authenticator if credentials are set
+        if (username.isNotEmpty() && password.isNotEmpty()) {
+            builder.authenticator(DigestAuthenticator(username, password))
         }
+
+        return builder.build()
     }
 
     private fun getRpcUrl(): String = "https://$host:$port/json_rpc"
@@ -67,6 +77,9 @@ class NodeRpcClient(
     fun setCredentials(username: String, password: String) {
         this.username = username
         this.password = password
+        // Rebuild client with new credentials for Digest auth
+        okHttpClient = buildClient()
+        Log.d(TAG, "Credentials set: user=$username, pass=${password.take(4)}***")
     }
 
     suspend fun getInfo(): Result<GetInfoResult> = withContext(Dispatchers.IO) {
@@ -130,30 +143,30 @@ class NodeRpcClient(
         Log.d(TAG, "RPC Request: $jsonRequest")
 
         val requestBody = jsonRequest.toRequestBody(JSON_MEDIA_TYPE)
+        val client = getOrCreateClient()
 
-        // Try HTTPS first, then HTTP
-        val urls = listOf(getRpcUrl(), getHttpRpcUrl())
+        // Try HTTP first (monerod typically uses HTTP for local RPC), then HTTPS
+        val urls = listOf(getHttpRpcUrl(), getRpcUrl())
 
         for (url in urls) {
             try {
-                val httpRequestBuilder = Request.Builder()
+                val httpRequest = Request.Builder()
                     .url(url)
                     .post(requestBody)
+                    .build()
 
-                // Add authentication if credentials are set
-                if (username.isNotEmpty() && password.isNotEmpty()) {
-                    httpRequestBuilder.header("Authorization", Credentials.basic(username, password))
-                }
+                Log.d(TAG, "RPC call to $url (auth=${username.isNotEmpty()})")
 
-                val httpRequest = httpRequestBuilder.build()
-
-                val response = okHttpClient.newCall(httpRequest).execute()
+                val response = client.newCall(httpRequest).execute()
                 val responseBody = response.body?.string() ?: ""
-                Log.d(TAG, "RPC Response from $url: $responseBody")
+
+                Log.d(TAG, "RPC Response code=${response.code} from $url")
 
                 if (response.isSuccessful && responseBody.isNotEmpty()) {
                     val type = TypeToken.getParameterized(RpcResponse::class.java, T::class.java).type
                     return gson.fromJson(responseBody, type)
+                } else if (response.code == 401) {
+                    Log.d(TAG, "Auth failed - response: $responseBody")
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "RPC call to $url failed: ${e.message}")
@@ -162,5 +175,110 @@ class NodeRpcClient(
         }
 
         throw Exception("Failed to connect to node RPC")
+    }
+}
+
+/**
+ * Digest Authentication implementation for OkHttp.
+ * Monerod uses HTTP Digest Authentication for RPC calls.
+ */
+class DigestAuthenticator(
+    private val username: String,
+    private val password: String
+) : Authenticator {
+
+    companion object {
+        private const val TAG = "DigestAuth"
+    }
+
+    override fun authenticate(route: Route?, response: Response): Request? {
+        // Don't retry if we already tried authentication
+        if (response.request.header("Authorization") != null) {
+            Log.d(TAG, "Already attempted auth, giving up")
+            return null
+        }
+
+        val wwwAuthenticate = response.header("WWW-Authenticate") ?: return null
+        Log.d(TAG, "WWW-Authenticate: $wwwAuthenticate")
+
+        if (!wwwAuthenticate.startsWith("Digest", ignoreCase = true)) {
+            Log.d(TAG, "Not Digest auth, skipping")
+            return null
+        }
+
+        // Parse the Digest challenge
+        val params = parseDigestChallenge(wwwAuthenticate)
+        val realm = params["realm"] ?: return null
+        val nonce = params["nonce"] ?: return null
+        val qop = params["qop"]
+        val opaque = params["opaque"]
+
+        // Generate client nonce and nonce count
+        val cnonce = generateCnonce()
+        val nc = "00000001"
+
+        // Calculate response
+        val method = response.request.method
+        val uri = response.request.url.encodedPath
+
+        val ha1 = md5("$username:$realm:$password")
+        val ha2 = md5("$method:$uri")
+
+        val responseHash = if (qop != null) {
+            md5("$ha1:$nonce:$nc:$cnonce:$qop:$ha2")
+        } else {
+            md5("$ha1:$nonce:$ha2")
+        }
+
+        // Build Authorization header
+        val authHeader = buildString {
+            append("Digest username=\"$username\"")
+            append(", realm=\"$realm\"")
+            append(", nonce=\"$nonce\"")
+            append(", uri=\"$uri\"")
+            if (qop != null) {
+                append(", qop=$qop")
+                append(", nc=$nc")
+                append(", cnonce=\"$cnonce\"")
+            }
+            append(", response=\"$responseHash\"")
+            if (opaque != null) {
+                append(", opaque=\"$opaque\"")
+            }
+        }
+
+        Log.d(TAG, "Sending Digest auth for user: $username")
+
+        return response.request.newBuilder()
+            .header("Authorization", authHeader)
+            .build()
+    }
+
+    private fun parseDigestChallenge(header: String): Map<String, String> {
+        val params = mutableMapOf<String, String>()
+        // Remove "Digest " prefix
+        val content = header.substringAfter("Digest ", "").trim()
+
+        // Parse key=value pairs
+        val regex = """(\w+)=(?:"([^"]+)"|([^,\s]+))""".toRegex()
+        regex.findAll(content).forEach { match ->
+            val key = match.groupValues[1]
+            val value = match.groupValues[2].ifEmpty { match.groupValues[3] }
+            params[key] = value
+        }
+
+        return params
+    }
+
+    private fun generateCnonce(): String {
+        val bytes = ByteArray(8)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun md5(input: String): String {
+        val md = java.security.MessageDigest.getInstance("MD5")
+        val digest = md.digest(input.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
     }
 }

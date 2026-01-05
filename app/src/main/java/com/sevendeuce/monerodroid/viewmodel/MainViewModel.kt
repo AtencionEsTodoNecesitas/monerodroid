@@ -119,10 +119,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun initRpcCredentialsAndStartPolling() {
         viewModelScope.launch {
-            // Initialize RPC credentials first
-            val username = configManager.rpcUsername.first()
-            val password = configManager.generateRpcPasswordIfNeeded()
-            rpcClient.setCredentials(username, password)
+            // Initialize RPC credentials first - get the config which ensures password exists
+            val config = configManager.getNodeConfig()
+            rpcClient.setCredentials(config.rpcUsername, config.rpcPassword)
+            Log.d(TAG, "RPC credentials initialized: user=${config.rpcUsername}")
 
             // Then start polling
             startStatusPolling()

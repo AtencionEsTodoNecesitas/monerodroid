@@ -174,6 +174,11 @@ limit-rate-down=${config.limitRateDown}
 
     fun writeConfigFile(configFile: File, dataDir: String, config: NodeConfig) {
         configFile.parentFile?.mkdirs()
-        configFile.writeText(generateConfigFile(dataDir, config))
+        val configText = generateConfigFile(dataDir, config)
+        configFile.writeText(configText)
+        android.util.Log.d(
+            "ConfigManager",
+            "Config written with rpc-login=${config.rpcUsername}:${config.rpcPassword.take(6)}***"
+        )
     }
 }
