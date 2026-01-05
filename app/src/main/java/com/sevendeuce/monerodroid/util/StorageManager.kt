@@ -25,14 +25,20 @@ class StorageManager(private val context: Context) {
 
     fun getExternalStorageInfo(): StorageInfo? {
         val externalDirs = context.getExternalFilesDirs(null)
-        // First entry is primary external (usually same as internal)
-        // Second entry (if exists) is removable SD card
+        // First try SD card (index 1), then fall back to primary external (index 0)
         val sdCard = externalDirs.getOrNull(1)
+        val primaryExternal = externalDirs.getOrNull(0)
 
-        return if (sdCard != null && sdCard.exists() && sdCard.canWrite()) {
-            getStorageInfo(sdCard.absolutePath, StorageLocation.EXTERNAL)
-        } else {
-            null
+        return when {
+            sdCard != null && sdCard.exists() && sdCard.canWrite() -> {
+                getStorageInfo(sdCard.absolutePath, StorageLocation.EXTERNAL)
+            }
+
+            primaryExternal != null && primaryExternal.exists() && primaryExternal.canWrite() -> {
+                getStorageInfo(primaryExternal.absolutePath, StorageLocation.EXTERNAL)
+            }
+
+            else -> null
         }
     }
 
@@ -63,7 +69,11 @@ class StorageManager(private val context: Context) {
 
     fun getMoneroDataDir(useExternal: Boolean): File {
         val baseDir = if (useExternal) {
-            context.getExternalFilesDirs(null).getOrNull(1) ?: context.filesDir
+            val externalDirs = context.getExternalFilesDirs(null)
+            // First try SD card (index 1), then fall back to primary external (index 0)
+            externalDirs.getOrNull(1)?.takeIf { it.exists() && it.canWrite() }
+                ?: externalDirs.getOrNull(0)
+                ?: context.filesDir
         } else {
             context.filesDir
         }

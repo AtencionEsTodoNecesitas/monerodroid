@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sevendeuce.monerodroid.BuildConfig
 import com.sevendeuce.monerodroid.ui.theme.*
 import com.sevendeuce.monerodroid.util.ArchitectureDetector
 import com.sevendeuce.monerodroid.util.UpdateStatus
@@ -158,7 +159,7 @@ fun SettingsScreen(
             SettingsSection(title = "ABOUT") {
                 SettingsInfo(
                     title = "MoneroDroid",
-                    value = "v1.0.0"
+                    value = "v${BuildConfig.VERSION_NAME}"
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -420,7 +421,12 @@ fun UpdateSection(
                 Spacer(modifier = Modifier.height(4.dp))
                 if (updateStatus is UpdateStatus.Progress) {
                     Text(
-                        text = "${String.format("%.1f", updateStatus.downloadedMb)} / ${String.format("%.1f", updateStatus.totalMb)} MB",
+                        text = "${String.format("%.1f", updateStatus.downloadedMb)} / ${
+                            String.format(
+                                "%.1f",
+                                updateStatus.totalMb
+                            )
+                        } MB",
                         color = TextGray,
                         fontSize = 12.sp
                     )

@@ -501,6 +501,21 @@ fun NetworkInfoCard(
     rpcPassword: String = ""
 ) {
     var showSensitiveInfo by remember { mutableStateOf(false) }
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copiedField by remember { mutableStateOf<String?>(null) }
+
+    // Reset copied indicator after delay
+    LaunchedEffect(copiedField) {
+        if (copiedField != null) {
+            kotlinx.coroutines.delay(1500)
+            copiedField = null
+        }
+    }
+
+    fun copyToClipboard(text: String, field: String) {
+        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+        copiedField = field
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -539,10 +554,17 @@ fun NetworkInfoCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(
+                    modifier = if (showSensitiveInfo && localIpAddress.isNotEmpty()) {
+                        Modifier.clickable {
+                            val ip = if (isRunning) "$localIpAddress:18081" else localIpAddress
+                            copyToClipboard(ip, "ip")
+                        }
+                    } else Modifier
+                ) {
                     Text(
-                        text = "LOCAL IP",
-                        color = TextGray,
+                        text = if (copiedField == "ip") "COPIED!" else "LOCAL IP",
+                        color = if (copiedField == "ip") MoneroOrange else TextGray,
                         fontSize = 10.sp,
                         letterSpacing = 1.sp
                     )
@@ -584,7 +606,7 @@ fun NetworkInfoCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "RPC LOGIN",
+                    text = "RPC LOGIN (tap to copy)",
                     color = TextGray,
                     fontSize = 10.sp,
                     letterSpacing = 1.sp
@@ -596,10 +618,12 @@ fun NetworkInfoCard(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier.clickable { copyToClipboard(rpcUsername, "user") }
+                        ) {
                             Text(
-                                text = "USER",
-                                color = TextGray,
+                                text = if (copiedField == "user") "COPIED!" else "USER",
+                                color = if (copiedField == "user") MoneroOrange else TextGray,
                                 fontSize = 9.sp
                             )
                             Text(
@@ -610,11 +634,12 @@ fun NetworkInfoCard(
                             )
                         }
                         Column(
-                            horizontalAlignment = Alignment.End
+                            horizontalAlignment = Alignment.End,
+                            modifier = Modifier.clickable { copyToClipboard(rpcPassword, "pass") }
                         ) {
                             Text(
-                                text = "PASS",
-                                color = TextGray,
+                                text = if (copiedField == "pass") "COPIED!" else "PASS",
+                                color = if (copiedField == "pass") MoneroOrange else TextGray,
                                 fontSize = 9.sp
                             )
                             Text(
