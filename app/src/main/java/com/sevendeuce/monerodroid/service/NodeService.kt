@@ -15,7 +15,6 @@ import com.sevendeuce.monerodroid.data.GetInfoResult
 import com.sevendeuce.monerodroid.util.ConfigManager
 import com.sevendeuce.monerodroid.util.MonerodProcess
 import com.sevendeuce.monerodroid.util.NodeRpcClient
-import com.sevendeuce.monerodroid.util.RpcProxyServer
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,7 +49,6 @@ class NodeService : Service() {
     private lateinit var monerodProcess: MonerodProcess
     private lateinit var configManager: ConfigManager
     private lateinit var rpcClient: NodeRpcClient
-    private var proxyServer: RpcProxyServer? = null
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var statusUpdateJob: Job? = null
@@ -103,7 +101,6 @@ class NodeService : Service() {
         Log.d(TAG, "NodeService destroyed")
 
         statusUpdateJob?.cancel()
-        stopProxyServer()
         releaseWakeLock()
 
         // Stop the node process in a separate thread to avoid blocking main thread
@@ -140,8 +137,6 @@ class NodeService : Service() {
                     _isRunning.value = true
                     Log.d(TAG, "Starting status updates")
                     startStatusUpdates()
-                    Log.d(TAG, "Starting proxy server")
-                    startProxyServer()
                     Log.d(TAG, "Updating notification")
                     updateNotification("Monero Node Running")
                 } else {
@@ -165,7 +160,6 @@ class NodeService : Service() {
         serviceScope.launch {
             try {
                 statusUpdateJob?.cancel()
-                stopProxyServer()
                 withContext(NonCancellable) {
                     monerodProcess.stop()
                 }
@@ -179,36 +173,6 @@ class NodeService : Service() {
             } finally {
                 stopSelf()
             }
-        }
-    }
-
-    private fun startProxyServer() {
-        serviceScope.launch {
-            try {
-                val username = configManager.rpcUsername.first()
-                val password = configManager.generateRpcPasswordIfNeeded()
-
-                Log.d(TAG, "Starting RPC Proxy with credentials: user=$username")
-
-                proxyServer = RpcProxyServer(proxyPort = 8081).apply {
-                    setCredentials(username, password)
-                    startProxy()
-                }
-                Log.d(TAG, "RPC Proxy server started on port 8081")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start proxy server", e)
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun stopProxyServer() {
-        try {
-            proxyServer?.stopProxy()
-            proxyServer = null
-            Log.d(TAG, "RPC Proxy server stopped")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping proxy server", e)
         }
     }
 

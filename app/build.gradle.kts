@@ -91,9 +91,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
 
-    // NanoHTTPD for lightweight HTTP proxy server
-    implementation("org.nanohttpd:nanohttpd:2.3.1")
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
