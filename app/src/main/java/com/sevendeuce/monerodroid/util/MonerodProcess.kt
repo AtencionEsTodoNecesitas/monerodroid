@@ -138,8 +138,8 @@ class MonerodProcess(private val context: Context) {
                 return@withContext Result.failure(e)
             }
 
-            // Start a coroutine to read output
-            launch {
+            // Start a coroutine to read output (use GlobalScope so it doesn't block withContext)
+            GlobalScope.launch(Dispatchers.IO) {
                 try {
                     val reader = process?.inputStream?.bufferedReader()
                     if (reader != null) {
@@ -173,6 +173,7 @@ class MonerodProcess(private val context: Context) {
                 ensureRpcCredentials()
                 if (rpcClient.isNodeRunning()) {
                     Log.d(TAG, "Node is responding to RPC")
+                    Log.d(TAG, "Returning success from MonerodProcess.start()")
                     return@withContext Result.success(Unit)
                 }
                 attempts++

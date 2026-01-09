@@ -129,12 +129,20 @@ class NodeService : Service() {
                 val useExternal = configManager.useExternalStorage.first()
                 Log.d(TAG, "Starting node with external storage: $useExternal")
 
+                Log.d(TAG, "Calling monerodProcess.start()")
                 val result = monerodProcess.start(useExternal)
+                Log.d(TAG, "monerodProcess.start() call completed")
+
+                Log.d(TAG, "MonerodProcess.start() returned: ${result.isSuccess}")
 
                 if (result.isSuccess) {
+                    Log.d(TAG, "Node started successfully, initializing services")
                     _isRunning.value = true
+                    Log.d(TAG, "Starting status updates")
                     startStatusUpdates()
+                    Log.d(TAG, "Starting proxy server")
                     startProxyServer()
+                    Log.d(TAG, "Updating notification")
                     updateNotification("Monero Node Running")
                 } else {
                     _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to start node"
@@ -178,7 +186,9 @@ class NodeService : Service() {
         serviceScope.launch {
             try {
                 val username = configManager.rpcUsername.first()
-                val password = configManager.rpcPassword.first()
+                val password = configManager.generateRpcPasswordIfNeeded()
+
+                Log.d(TAG, "Starting RPC Proxy with credentials: user=$username")
 
                 proxyServer = RpcProxyServer(proxyPort = 8081).apply {
                     setCredentials(username, password)
@@ -187,6 +197,7 @@ class NodeService : Service() {
                 Log.d(TAG, "RPC Proxy server started on port 8081")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start proxy server", e)
+                e.printStackTrace()
             }
         }
     }
