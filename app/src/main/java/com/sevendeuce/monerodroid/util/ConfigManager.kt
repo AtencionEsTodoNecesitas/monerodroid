@@ -27,6 +27,8 @@ class ConfigManager(private val context: Context) {
         private val KEY_FIRST_RUN = booleanPreferencesKey("first_run")
         private val KEY_RPC_USERNAME = stringPreferencesKey("rpc_username")
         private val KEY_RPC_PASSWORD = stringPreferencesKey("rpc_password")
+        private val KEY_TOR_ENABLED = booleanPreferencesKey("tor_enabled")
+        private val KEY_ONION_ADDRESS = stringPreferencesKey("onion_address")
     }
 
     val useExternalStorage: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -55,6 +57,14 @@ class ConfigManager(private val context: Context) {
 
     val rpcPassword: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_RPC_PASSWORD] ?: ""
+    }
+
+    val torEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_TOR_ENABLED] ?: false
+    }
+
+    val onionAddress: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_ONION_ADDRESS] ?: ""
     }
 
     suspend fun setUseExternalStorage(value: Boolean) {
@@ -91,6 +101,18 @@ class ConfigManager(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[KEY_RPC_USERNAME] = username
             prefs[KEY_RPC_PASSWORD] = password
+        }
+    }
+
+    suspend fun setTorEnabled(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_TOR_ENABLED] = value
+        }
+    }
+
+    suspend fun setOnionAddress(value: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ONION_ADDRESS] = value
         }
     }
 

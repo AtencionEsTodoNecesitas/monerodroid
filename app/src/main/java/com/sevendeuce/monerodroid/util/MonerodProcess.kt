@@ -69,7 +69,7 @@ class MonerodProcess(private val context: Context) {
         }
     }
 
-    suspend fun start(useExternalStorage: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun start(useExternalStorage: Boolean, torArgs: List<String> = emptyList()): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             if (isRunning) {
                 Log.d(TAG, "Node is already running")
@@ -107,6 +107,12 @@ class MonerodProcess(private val context: Context) {
                 "--config-file", configFile.absolutePath,
                 "--non-interactive"
             )
+
+            // Add Tor arguments if provided
+            if (torArgs.isNotEmpty()) {
+                command.addAll(torArgs)
+                Log.d(TAG, "Added Tor arguments: ${torArgs.joinToString(" ")}")
+            }
 
             // Add custom flags if any (use first() instead of collect to avoid blocking)
             try {

@@ -166,6 +166,8 @@ fun MoneroDroidApp(
     val updateStatus by viewModel.updateStatus.collectAsState()
     val rpcUsername by viewModel.rpcUsername.collectAsState()
     val rpcPassword by viewModel.rpcPassword.collectAsState()
+    val torEnabled by viewModel.torEnabled.collectAsState()
+    val onionAddress by viewModel.onionAddress.collectAsState()
 
     // Handle back button when in settings
     BackHandler(enabled = showSettings) {
@@ -190,12 +192,17 @@ fun MoneroDroidApp(
                 SettingsScreen(
                     pruneBlockchain = pruneBlockchain,
                     startOnBoot = startOnBoot,
+                    torEnabled = torEnabled,
+                    onionAddress = onionAddress,
+                    isOrbotInstalled = viewModel.isOrbotInstalled(),
                     nodeVersion = nodeState.nodeVersion,
                     storageFreeGb = nodeState.storageFreeGb,
                     updateStatus = updateStatus,
                     isNodeRunning = nodeState.isRunning,
                     onPruneToggle = viewModel::setPruneBlockchain,
                     onStartOnBootToggle = viewModel::setStartOnBoot,
+                    onTorToggle = viewModel::setTorEnabled,
+                    onOnionAddressChange = viewModel::setOnionAddress,
                     onCheckForUpdate = viewModel::checkForUpdate,
                     onUpdateMonerod = viewModel::updateMonerod,
                     onResetUpdateStatus = viewModel::resetUpdateStatus,
@@ -208,6 +215,8 @@ fun MoneroDroidApp(
                     isExternalAvailable = viewModel.isExternalStorageAvailable(),
                     rpcUsername = rpcUsername,
                     rpcPassword = rpcPassword,
+                    torEnabled = torEnabled,
+                    onionAddress = onionAddress,
                     onStorageToggle = viewModel::setUseExternalStorage,
                     onStartStopToggle = {
                         if (nodeState.isRunning) {

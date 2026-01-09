@@ -15,6 +15,7 @@ import com.sevendeuce.monerodroid.data.GetInfoResult
 import com.sevendeuce.monerodroid.util.ConfigManager
 import com.sevendeuce.monerodroid.util.MonerodProcess
 import com.sevendeuce.monerodroid.util.NodeRpcClient
+import com.sevendeuce.monerodroid.util.OrbotManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,7 @@ class NodeService : Service() {
     private lateinit var monerodProcess: MonerodProcess
     private lateinit var configManager: ConfigManager
     private lateinit var rpcClient: NodeRpcClient
+    private lateinit var orbotManager: OrbotManager
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var statusUpdateJob: Job? = null
@@ -73,6 +75,8 @@ class NodeService : Service() {
         monerodProcess = MonerodProcess(this)
         configManager = ConfigManager(this)
         rpcClient = NodeRpcClient()
+        orbotManager = OrbotManager(this)
+        orbotManager.init()
 
         createNotificationChannel()
         acquireWakeLock()
@@ -101,6 +105,7 @@ class NodeService : Service() {
         Log.d(TAG, "NodeService destroyed")
 
         statusUpdateJob?.cancel()
+        orbotManager.cleanup()
         releaseWakeLock()
 
         // Stop the node process in a separate thread to avoid blocking main thread
@@ -124,10 +129,42 @@ class NodeService : Service() {
                 _errorMessage.value = null
 
                 val useExternal = configManager.useExternalStorage.first()
-                Log.d(TAG, "Starting node with external storage: $useExternal")
+                val torEnabled = configManager.torEnabled.first()
+                Log.d(TAG, "Starting node with external storage: $useExternal, Tor: $torEnabled")
+
+                // Get Tor arguments if Tor is enabled and Orbot is running
+                val torArgs = if (torEnabled) {
+                    // Load saved onion address if available
+                    val savedOnion = configManager.onionAddress.first()
+                    if (savedOnion.isNotEmpty()) {
+                        orbotManager.setOnionAddress(savedOnion)
+                    }
+
+                    // Request Orbot to start if not running
+                    if (!orbotManager.state.value.isRunning) {
+                        orbotManager.requestStartTor()
+                        // Wait for Orbot to connect (up to 30 seconds)
+                        var attempts = 0
+                        while (!orbotManager.state.value.isRunning && attempts < 30) {
+                            delay(1000)
+                            attempts++
+                            Log.d(TAG, "Waiting for Orbot... attempt $attempts")
+                        }
+                    }
+
+                    if (orbotManager.state.value.isRunning) {
+                        Log.d(TAG, "Orbot is running, getting Tor args")
+                        orbotManager.getMonerodTorArgs()
+                    } else {
+                        Log.w(TAG, "Orbot not running, starting without Tor")
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
 
                 Log.d(TAG, "Calling monerodProcess.start()")
-                val result = monerodProcess.start(useExternal)
+                val result = monerodProcess.start(useExternal, torArgs)
                 Log.d(TAG, "monerodProcess.start() call completed")
 
                 Log.d(TAG, "MonerodProcess.start() returned: ${result.isSuccess}")

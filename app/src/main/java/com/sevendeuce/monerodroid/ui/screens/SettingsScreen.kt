@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,12 +27,17 @@ import com.sevendeuce.monerodroid.util.UpdateStatus
 fun SettingsScreen(
     pruneBlockchain: Boolean,
     startOnBoot: Boolean,
+    torEnabled: Boolean,
+    onionAddress: String,
+    isOrbotInstalled: Boolean,
     nodeVersion: String,
     storageFreeGb: Float,
     updateStatus: UpdateStatus,
     isNodeRunning: Boolean,
     onPruneToggle: (Boolean) -> Unit,
     onStartOnBootToggle: (Boolean) -> Unit,
+    onTorToggle: (Boolean) -> Unit,
+    onOnionAddressChange: (String) -> Unit,
     onCheckForUpdate: () -> Unit,
     onUpdateMonerod: () -> Unit,
     onResetUpdateStatus: () -> Unit,
@@ -87,6 +94,88 @@ fun SettingsScreen(
                     checked = startOnBoot,
                     onCheckedChange = onStartOnBootToggle
                 )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Tor/Privacy Section
+            SettingsSection(title = "TOR / PRIVACY") {
+                if (!isOrbotInstalled) {
+                    Text(
+                        text = "Orbot (Tor for Android) is required for Tor support. Install it from Play Store or F-Droid.",
+                        color = TextGray,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                SettingsSwitch(
+                    title = "Enable Tor",
+                    description = if (isOrbotInstalled)
+                        "Route node traffic through Tor network for privacy. Requires Orbot to be running."
+                    else
+                        "Install Orbot to enable Tor support",
+                    checked = torEnabled,
+                    onCheckedChange = { enabled ->
+                        if (isOrbotInstalled || !enabled) {
+                            onTorToggle(enabled)
+                        }
+                    }
+                )
+
+                if (torEnabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = ".onion Address (Optional)",
+                        color = TextWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Enter your hidden service .onion address to allow incoming connections via Tor. Set this up in Orbot's Hidden Service settings.",
+                        color = TextGray,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    var onionText by remember { mutableStateOf(onionAddress) }
+
+                    OutlinedTextField(
+                        value = onionText,
+                        onValueChange = {
+                            onionText = it
+                            if (it.isEmpty() || it.endsWith(".onion")) {
+                                onOnionAddressChange(it)
+                            }
+                        },
+                        placeholder = {
+                            Text(
+                                "xxxxxxxx.onion",
+                                color = TextGray.copy(alpha = 0.5f)
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = MoneroOrange,
+                            unfocusedBorderColor = TextGray.copy(alpha = 0.3f),
+                            cursorColor = MoneroOrange
+                        )
+                    )
+
+                    if (onionAddress.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Remote wallets can connect to: $onionAddress:18081",
+                            color = MoneroOrange,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

@@ -91,6 +91,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
 
+    // NetCipher for Orbot/Tor integration
+    implementation("info.guardianproject.netcipher:netcipher:2.1.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

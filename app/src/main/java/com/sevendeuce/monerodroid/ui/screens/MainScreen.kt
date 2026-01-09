@@ -43,6 +43,8 @@ fun MainScreen(
     isExternalAvailable: Boolean,
     rpcUsername: String = "",
     rpcPassword: String = "",
+    torEnabled: Boolean = false,
+    onionAddress: String = "",
     onStorageToggle: (Boolean) -> Unit,
     onStartStopToggle: () -> Unit,
     onDownloadBinary: () -> Unit,
@@ -193,7 +195,9 @@ fun MainScreen(
                 nodeVersion = nodeState.nodeVersion,
                 isRunning = nodeState.isRunning,
                 rpcUsername = rpcUsername,
-                rpcPassword = rpcPassword
+                rpcPassword = rpcPassword,
+                torEnabled = torEnabled,
+                onionAddress = onionAddress
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -498,7 +502,9 @@ fun NetworkInfoCard(
     nodeVersion: String,
     isRunning: Boolean,
     rpcUsername: String = "",
-    rpcPassword: String = ""
+    rpcPassword: String = "",
+    torEnabled: Boolean = false,
+    onionAddress: String = ""
 ) {
     var showSensitiveInfo by remember { mutableStateOf(false) }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -653,6 +659,81 @@ fun NetworkInfoCard(
                 } else {
                     Text(
                         text = "Tap SHOW to reveal credentials",
+                        color = TextGray,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            // Tor/.onion section
+            if (torEnabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = TextGray.copy(alpha = 0.3f), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TOR STATUS",
+                        color = TextGray,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isRunning) Color(0xFF9C27B0) else TextGray) // Purple for Tor
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isRunning) "ENABLED" else "PENDING",
+                            color = if (isRunning) Color(0xFF9C27B0) else TextGray,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                if (onionAddress.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Column(
+                        modifier = if (showSensitiveInfo) {
+                            Modifier.clickable {
+                                val fullAddress = "$onionAddress:18081"
+                                copyToClipboard(fullAddress, "onion")
+                            }
+                        } else Modifier
+                    ) {
+                        Text(
+                            text = if (copiedField == "onion") "COPIED!" else ".ONION ADDRESS (tap to copy)",
+                            color = if (copiedField == "onion") MoneroOrange else TextGray,
+                            fontSize = 10.sp,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (showSensitiveInfo) {
+                                "$onionAddress:18081"
+                            } else {
+                                "xxxxxxxx...xxxx.onion:18081"
+                            },
+                            color = Color(0xFF9C27B0), // Purple for Tor
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Configure .onion address in Settings",
                         color = TextGray,
                         fontSize = 11.sp
                     )

@@ -79,6 +79,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         false
     )
 
+    val torEnabled = configManager.torEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
+
+    val onionAddress = configManager.onionAddress.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        ""
+    )
+
+    private val orbotManager = OrbotManager(context)
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.d(TAG, "Service connected")
@@ -327,6 +341,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             configManager.setStartOnBoot(enabled)
         }
+    }
+
+    fun setTorEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            configManager.setTorEnabled(enabled)
+        }
+    }
+
+    fun setOnionAddress(address: String) {
+        viewModelScope.launch {
+            configManager.setOnionAddress(address)
+        }
+    }
+
+    fun isOrbotInstalled(): Boolean {
+        return orbotManager.isOrbotInstalled()
+    }
+
+    fun getOrbotState(): StateFlow<OrbotManager.OrbotState> {
+        return orbotManager.state
+    }
+
+    fun initOrbot() {
+        orbotManager.init()
     }
 
     fun startNode() {

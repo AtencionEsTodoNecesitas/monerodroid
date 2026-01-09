@@ -32,6 +32,11 @@
     <!-- Request to ignore battery optimizations -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Query for Orbot (Tor) - required for Android 11+ package visibility -->
+    <queries>
+        <package android:name="org.torproject.android" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
