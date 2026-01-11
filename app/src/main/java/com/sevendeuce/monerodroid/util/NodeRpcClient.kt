@@ -24,8 +24,8 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 class NodeRpcClient(
-    private val host: String = "127.0.0.1",
-    private val port: Int = 18081,
+    private var host: String = "0.0.0.0",
+    private var port: Int = 18081,
     private var username: String = "",
     private var password: String = ""
 ) {
@@ -80,6 +80,12 @@ class NodeRpcClient(
         // Rebuild client with new credentials for Digest auth
         okHttpClient = buildClient()
         Log.d(TAG, "Credentials set: user=$username, pass=${password.take(4)}***")
+    }
+
+    fun setHost(host: String, port: Int = this.port) {
+        this.host = host
+        this.port = port
+        Log.d(TAG, "RPC host set to: $host:$port")
     }
 
     suspend fun getInfo(): Result<GetInfoResult> = withContext(Dispatchers.IO) {

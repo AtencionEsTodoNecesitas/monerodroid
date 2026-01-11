@@ -27,6 +27,7 @@ class ConfigManager(private val context: Context) {
         private val KEY_FIRST_RUN = booleanPreferencesKey("first_run")
         private val KEY_RPC_USERNAME = stringPreferencesKey("rpc_username")
         private val KEY_RPC_PASSWORD = stringPreferencesKey("rpc_password")
+        private val KEY_RPC_BIND_IP = stringPreferencesKey("rpc_bind_ip")
         private val KEY_TOR_ENABLED = booleanPreferencesKey("tor_enabled")
         private val KEY_ONION_ADDRESS = stringPreferencesKey("onion_address")
     }
@@ -57,6 +58,10 @@ class ConfigManager(private val context: Context) {
 
     val rpcPassword: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_RPC_PASSWORD] ?: ""
+    }
+
+    val rpcBindIp: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_RPC_BIND_IP] ?: "0.0.0.0"
     }
 
     val torEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -139,6 +144,7 @@ class ConfigManager(private val context: Context) {
             pruneBlockchain = prefs[KEY_PRUNE_BLOCKCHAIN] ?: true,
             p2pBindPort = prefs[KEY_P2P_PORT] ?: 18080,
             rpcBindPort = prefs[KEY_RPC_PORT] ?: 18081,
+            rpcBindIp = prefs[KEY_RPC_BIND_IP] ?: "0.0.0.0",
             restrictedRpcPort = prefs[KEY_RESTRICTED_RPC_PORT] ?: 18089,
             outPeers = prefs[KEY_OUT_PEERS] ?: 32,
             inPeers = prefs[KEY_IN_PEERS] ?: 32,
@@ -165,13 +171,13 @@ p2p-bind-ip=0.0.0.0
 p2p-bind-port=${config.p2pBindPort}
 
 # Restricted RPC binds (allow restricted access from LAN/WAN)
-rpc-restricted-bind-ip=0.0.0.0
+rpc-restricted-bind-ip=${config.rpcBindIp}
 rpc-restricted-bind-port=${config.restrictedRpcPort}
 
 # Unrestricted RPC binds (all interfaces with authentication)
-rpc-bind-ip=0.0.0.0
+rpc-bind-ip=${config.rpcBindIp}
 rpc-bind-port=${config.rpcBindPort}
-confirm-external-bind=1
+confirm-external-bind=${if (config.rpcBindIp != "127.0.0.1") 1 else 0}
 
 # RPC Authentication (required for external access)
 rpc-login=${config.rpcUsername}:${config.rpcPassword}

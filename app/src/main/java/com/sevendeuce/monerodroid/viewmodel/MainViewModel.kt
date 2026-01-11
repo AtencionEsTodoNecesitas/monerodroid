@@ -135,8 +135,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             // Initialize RPC credentials first - get the config which ensures password exists
             val config = configManager.getNodeConfig()
+            rpcClient.setHost(config.rpcBindIp, config.rpcBindPort)
             rpcClient.setCredentials(config.rpcUsername, config.rpcPassword)
-            Log.d(TAG, "RPC credentials initialized: user=${config.rpcUsername}")
+            Log.d(TAG, "RPC initialized: host=${config.rpcBindIp}:${config.rpcBindPort}, user=${config.rpcUsername}")
 
             // Then start polling
             startStatusPolling()

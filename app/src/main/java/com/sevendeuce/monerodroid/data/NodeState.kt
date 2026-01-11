@@ -65,6 +65,7 @@ data class NodeConfig(
     val pruneBlockchain: Boolean = true,
     val p2pBindPort: Int = 18080,
     val rpcBindPort: Int = 18081,
+    val rpcBindIp: String = "0.0.0.0",
     val restrictedRpcPort: Int = 18089,
     val outPeers: Int = 32,
     val inPeers: Int = 32,

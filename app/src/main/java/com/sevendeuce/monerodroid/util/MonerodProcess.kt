@@ -26,17 +26,24 @@ class MonerodProcess(private val context: Context) {
         if (!credentialsInitialized || config != null) {
             val username: String
             val password: String
+            val rpcHost: String
+            val rpcPort: Int
             if (config != null) {
                 // Use credentials from config to ensure consistency
                 username = config.rpcUsername
                 password = config.rpcPassword
+                rpcHost = config.rpcBindIp
+                rpcPort = config.rpcBindPort
             } else {
                 username = configManager.rpcUsername.first()
                 password = configManager.generateRpcPasswordIfNeeded()
+                rpcHost = configManager.rpcBindIp.first()
+                rpcPort = configManager.getNodeConfig().rpcBindPort
             }
+            rpcClient.setHost(rpcHost, rpcPort)
             rpcClient.setCredentials(username, password)
             credentialsInitialized = true
-            Log.d(TAG, "RPC credentials initialized: user=$username")
+            Log.d(TAG, "RPC initialized: host=$rpcHost:$rpcPort, user=$username")
         }
     }
 
