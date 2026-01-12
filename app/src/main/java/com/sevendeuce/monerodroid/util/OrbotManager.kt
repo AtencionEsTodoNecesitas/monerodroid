@@ -43,19 +43,32 @@ class OrbotManager(private val context: Context) {
      * Initialize OrbotManager and check if Orbot is installed
      */
     fun init(): Boolean {
-        orbotHelper = OrbotHelper.get(context)
-        val isInstalled = orbotHelper?.init() ?: false
+        return try {
+            orbotHelper = OrbotHelper.get(context)
+            val isInstalled = orbotHelper?.init() ?: false
 
-        _state.value = _state.value.copy(isInstalled = isInstalled)
+            _state.value = _state.value.copy(isInstalled = isInstalled)
 
-        if (isInstalled) {
-            Log.d(TAG, "Orbot is installed")
-            setupStatusCallback()
-        } else {
-            Log.d(TAG, "Orbot is not installed")
+            if (isInstalled) {
+                Log.d(TAG, "Orbot is installed")
+                setupStatusCallback()
+            } else {
+                Log.d(TAG, "Orbot is not installed")
+            }
+
+            isInstalled
+        } catch (e: SecurityException) {
+            // Android 14+ requires RECEIVER_EXPORTED/NOT_EXPORTED flags
+            // NetCipher library doesn't support this yet
+            Log.w(TAG, "OrbotHelper.init() failed on Android 14+: ${e.message}")
+            Log.d(TAG, "Orbot support disabled on this Android version")
+            _state.value = _state.value.copy(isInstalled = false, errorMessage = "Orbot not supported on Android 14+")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Orbot initialization error", e)
+            _state.value = _state.value.copy(isInstalled = false, errorMessage = e.message)
+            false
         }
-
-        return isInstalled
     }
 
     private fun setupStatusCallback() {
