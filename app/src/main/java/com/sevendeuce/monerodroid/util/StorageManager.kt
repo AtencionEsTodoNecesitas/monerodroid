@@ -89,13 +89,26 @@ class StorageManager(private val context: Context) {
     }
 
     fun getMonerodBinaryPath(): File {
-        // First check if bundled binary exists in native lib dir (preferred for execution)
+        // Prefer updated/copied binary in writable app data (takes precedence after updates)
+        val copiedBinary = getWritableBinaryPath()
+        if (copiedBinary.exists() && copiedBinary.canExecute()) {
+            return copiedBinary
+        }
+        // Fall back to bundled binary in native lib dir
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val bundledBinary = File(nativeLibDir, "libmonerod.so")
         if (bundledBinary.exists() && bundledBinary.canExecute()) {
             return bundledBinary
         }
-        // Fall back to copied binary in app data
+        // Default to writable path for initial download
+        return copiedBinary
+    }
+
+    /**
+     * Get the writable path for monerod binary (always in app data, never native lib dir).
+     * Use this for any write operations (download, update, backup).
+     */
+    fun getWritableBinaryPath(): File {
         return File(getBinaryDir(), "monerod")
     }
 

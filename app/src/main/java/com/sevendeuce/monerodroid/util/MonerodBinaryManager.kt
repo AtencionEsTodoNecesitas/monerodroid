@@ -103,11 +103,6 @@ class MonerodBinaryManager(private val context: Context) {
      * Get the path to the monerod binary (native lib or copied)
      */
     fun getBinaryPath(): String {
-        // Prefer native lib directory (bundled binary) - Android allows execution from here
-        val nativeLib = storageManager.getNativeLibMonerodPath()
-        if (nativeLib != null && nativeLib.exists()) {
-            return nativeLib.absolutePath
-        }
         return storageManager.getMonerodBinaryPath().absolutePath
     }
 
@@ -354,7 +349,7 @@ class MonerodBinaryManager(private val context: Context) {
             // Step 3: Find and copy monerod binary
             val monerodFile = findMonerodBinary(extractDir)
             if (monerodFile != null) {
-                val destFile = storageManager.getMonerodBinaryPath()
+                val destFile = storageManager.getWritableBinaryPath()
                 if (destFile.exists()) destFile.delete()
                 monerodFile.copyTo(destFile, overwrite = true)
                 makeExecutable(destFile)
@@ -401,7 +396,7 @@ class MonerodBinaryManager(private val context: Context) {
 
             val monerodFile = findMonerodBinary(extractDir)
             if (monerodFile != null) {
-                val destFile = storageManager.getMonerodBinaryPath()
+                val destFile = storageManager.getWritableBinaryPath()
                 if (destFile.exists()) destFile.delete()
                 monerodFile.copyTo(destFile, overwrite = true)
                 makeExecutable(destFile)
@@ -541,9 +536,10 @@ class MonerodBinaryManager(private val context: Context) {
             Log.d(TAG, "Update download complete, extracting...")
             emit(UpdateStatus.Extracting)
 
-            // Backup existing binary
+            // Backup existing binary to writable directory
             val existingBinary = storageManager.getMonerodBinaryPath()
-            val backupBinary = File(existingBinary.parent, "monerod.backup")
+            val binaryDir = storageManager.getBinaryDir()
+            val backupBinary = File(binaryDir, "monerod.backup")
             if (existingBinary.exists()) {
                 existingBinary.copyTo(backupBinary, overwrite = true)
             }
@@ -561,9 +557,11 @@ class MonerodBinaryManager(private val context: Context) {
                 Log.d(TAG, "Binary updated successfully")
                 emit(UpdateStatus.Success)
             } else {
-                // Restore backup
+                // Restore backup to writable location
                 if (backupBinary.exists()) {
-                    backupBinary.copyTo(existingBinary, overwrite = true)
+                    val destBinary = storageManager.getWritableBinaryPath()
+                    backupBinary.copyTo(destBinary, overwrite = true)
+                    makeExecutable(destBinary)
                     backupBinary.delete()
                 }
                 emit(UpdateStatus.Error("Failed to extract updated monerod binary"))
