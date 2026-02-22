@@ -146,6 +146,36 @@ class MonerodProcess(private val context: Context) {
             try {
                 process = processBuilder.start()
                 Log.d(TAG, "Process started successfully, isAlive: ${process?.isAlive}")
+            } catch (e: java.io.IOException) {
+                // On Android 10+, app data directories may have noexec mount flag.
+                // The writable binary (from update) can't be executed despite chmod 755.
+                // Fall back to the bundled binary from nativeLibDir which has proper execute permissions.
+                if (e.message?.contains("Permission denied") == true) {
+                    val bundledBinary = storageManager.getNativeLibMonerodPath()
+                    if (bundledBinary != null && bundledBinary.exists()) {
+                        Log.w(TAG, "Cannot execute updated binary (noexec mount), falling back to bundled: ${bundledBinary.absolutePath}")
+                        command[0] = bundledBinary.absolutePath
+                        Log.d(TAG, "Fallback command: ${command.joinToString(" ")}")
+                        val fallbackBuilder = ProcessBuilder(command)
+                            .directory(dataDir)
+                            .redirectErrorStream(true)
+                        fallbackBuilder.environment()["HOME"] = context.filesDir.absolutePath
+                        fallbackBuilder.environment()["TMPDIR"] = context.cacheDir.absolutePath
+                        try {
+                            process = fallbackBuilder.start()
+                            Log.d(TAG, "Bundled binary started successfully, isAlive: ${process?.isAlive}")
+                        } catch (e2: Exception) {
+                            Log.e(TAG, "Failed to start bundled binary too", e2)
+                            return@withContext Result.failure(e2)
+                        }
+                    } else {
+                        Log.e(TAG, "No bundled binary available for fallback")
+                        return@withContext Result.failure(e)
+                    }
+                } else {
+                    Log.e(TAG, "Failed to start process", e)
+                    return@withContext Result.failure(e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start process", e)
                 return@withContext Result.failure(e)

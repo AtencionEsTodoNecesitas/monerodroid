@@ -149,21 +149,46 @@ class MonerodBinaryManager(private val context: Context) {
 
             Log.d(TAG, "Getting version from: $binaryPath")
 
-            val process = ProcessBuilder(binaryPath, "--version")
-                .redirectErrorStream(true)
-                .start()
-
-            val output = process.inputStream.bufferedReader().readText()
-            val completed = process.waitFor(10, TimeUnit.SECONDS)
-            Log.d(TAG, "Version output: $output, completed: $completed")
-
-            // Parse version from output like "Monero 'Fluorine Fermi' (v0.18.3.1-release)"
-            val versionRegex = """v(\d+\.\d+\.\d+\.\d+)""".toRegex()
-            versionRegex.find(output)?.groupValues?.get(1)
+            runVersionCommand(binaryPath)
+        } catch (e: java.io.IOException) {
+            // On Android 10+, app data directories have noexec mount flag.
+            // Java's canExecute() checks file permission bits but NOT the filesystem mount flag,
+            // so the binary appears executable but the kernel blocks it with error=13.
+            if (e.message?.contains("Permission denied") == true) {
+                Log.w(TAG, "Cannot execute binary (noexec mount), trying bundled binary")
+                val bundled = storageManager.getNativeLibMonerodPath()
+                if (bundled != null && bundled.exists()) {
+                    try {
+                        return runVersionCommand(bundled.absolutePath)
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Bundled binary version check also failed", e2)
+                    }
+                }
+            }
+            Log.e(TAG, "Error getting version", e)
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Error getting version", e)
             null
         }
+    }
+
+    /**
+     * Execute the binary with --version and parse the version string from output.
+     */
+    private fun runVersionCommand(binaryPath: String): String? {
+        Log.d(TAG, "Running version command: $binaryPath --version")
+        val process = ProcessBuilder(binaryPath, "--version")
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val completed = process.waitFor(10, TimeUnit.SECONDS)
+        Log.d(TAG, "Version output: $output, completed: $completed")
+
+        // Parse version from output like "Monero 'Fluorine Fermi' (v0.18.3.1-release)"
+        val versionRegex = """v(\d+\.\d+\.\d+\.\d+)""".toRegex()
+        return versionRegex.find(output)?.groupValues?.get(1)
     }
 
     /**
