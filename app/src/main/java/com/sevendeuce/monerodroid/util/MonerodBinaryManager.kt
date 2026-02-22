@@ -40,6 +40,22 @@ class MonerodBinaryManager(private val context: Context) {
     companion object {
         private const val TAG = "MonerodBinaryManager"
         private const val BUNDLED_BINARY_NAME = "libmonerod.so"
+
+        /**
+         * Get the system dynamic linker path for the current architecture.
+         * Used to execute binaries from noexec-mounted directories on Android 10+.
+         * The linker can load and run ELF binaries via mmap(PROT_EXEC), bypassing
+         * the SELinux execute_no_trans denial on app_data_file.
+         */
+        fun getSystemLinkerPath(): String? {
+            // Try 64-bit linker first (most modern devices)
+            val linker64 = File("/system/bin/linker64")
+            if (linker64.exists()) return linker64.absolutePath
+            // Fall back to 32-bit linker
+            val linker = File("/system/bin/linker")
+            if (linker.exists()) return linker.absolutePath
+            return null
+        }
     }
 
     private val storageManager = StorageManager(context)
@@ -103,80 +119,111 @@ class MonerodBinaryManager(private val context: Context) {
     fun getBinaryVersion(): String? {
         if (!isBinaryInstalled()) return null
 
-        // Retry up to 3 times — handles post-update race conditions
-        // where the binary may not be immediately ready after extraction
-        repeat(3) { attempt ->
-            val version = tryGetBinaryVersion()
-            if (version != null) {
-                // Cache successful detection for future fallback
-                saveInstalledVersion(version)
-                return version
-            }
-            if (attempt < 2) {
-                Log.d(TAG, "getBinaryVersion attempt ${attempt + 1} failed, retrying in 500ms")
-                Thread.sleep(500)
-            }
+        // Try to get version by running the binary directly
+        val version = tryGetBinaryVersion()
+        if (version != null) {
+            saveInstalledVersion(version)
+            return version
         }
 
-        // Fallback: read saved version from disk
-        // This handles cases where the binary can't be executed
-        // (e.g. noexec mount on Android 10+ data directory)
+        // Fallback 1: read saved version from disk
+        // This handles the case where the updated binary can't be executed
+        // (e.g. noexec / SELinux execute_no_trans denial on Android 10+)
+        // but we saved the version during the download/update process.
         val saved = readSavedVersion()
         if (saved != null) {
             Log.d(TAG, "Using saved version as fallback: $saved")
             return saved
         }
 
-        Log.w(TAG, "getBinaryVersion failed after 3 attempts and no saved version")
+        // Fallback 2: try bundled binary directly for version.
+        // This handles fresh install where no saved version exists.
+        // NOTE: Do NOT save this version — it's the bundled version, not the installed/updated one.
+        val bundled = storageManager.getNativeLibMonerodPath()
+        if (bundled != null && bundled.exists()) {
+            val bundledVersion = runVersionCommandDirect(bundled.absolutePath)
+            if (bundledVersion != null) {
+                Log.d(TAG, "Using bundled binary version: $bundledVersion")
+                return bundledVersion
+            }
+        }
+
+        Log.w(TAG, "getBinaryVersion failed: no binary, saved, or bundled version available")
         return null
     }
 
+    /**
+     * Try to get the binary version by executing it.
+     * On Android 10+, if direct execution fails with Permission Denied (SELinux execute_no_trans
+     * denial on app_data_file), tries the system linker trick to bypass the restriction.
+     * Does NOT fall back to the bundled binary — that would report the wrong version.
+     */
     private fun tryGetBinaryVersion(): String? {
-        return try {
-            val binaryFile = storageManager.getMonerodBinaryPath()
+        val binaryFile = storageManager.getMonerodBinaryPath()
+        val writableBinary = storageManager.getWritableBinaryPath()
 
-            // Ensure the binary is executable before trying to run it
-            if (binaryFile.exists() && !binaryFile.canExecute()) {
-                Log.d(TAG, "Binary exists but not executable, attempting to fix: ${binaryFile.absolutePath}")
-                makeExecutable(binaryFile)
-            }
-
-            val binaryPath = binaryFile.absolutePath
-            if (!binaryFile.canExecute()) {
-                Log.e(TAG, "Binary is not executable after fix attempt: $binaryPath")
+        // If the writable (updated) binary doesn't exist, and getMonerodBinaryPath()
+        // returned the bundled binary, we don't want to run it here — that version
+        // would overwrite the saved version. Let getBinaryVersion() handle bundled fallback.
+        if (!writableBinary.exists()) {
+            // No updated binary — check if the binary path IS the bundled binary
+            val bundledPath = storageManager.getNativeLibMonerodPath()?.absolutePath
+            if (binaryFile.absolutePath == bundledPath) {
+                // Only bundled binary available — return null so getBinaryVersion()
+                // handles it via the bundled fallback (without saving the version)
                 return null
             }
-
-            Log.d(TAG, "Getting version from: $binaryPath")
-
-            runVersionCommand(binaryPath)
-        } catch (e: java.io.IOException) {
-            // On Android 10+, app data directories have noexec mount flag.
-            // Java's canExecute() checks file permission bits but NOT the filesystem mount flag,
-            // so the binary appears executable but the kernel blocks it with error=13.
-            if (e.message?.contains("Permission denied") == true) {
-                Log.w(TAG, "Cannot execute binary (noexec mount), trying bundled binary")
-                val bundled = storageManager.getNativeLibMonerodPath()
-                if (bundled != null && bundled.exists()) {
-                    try {
-                        return runVersionCommand(bundled.absolutePath)
-                    } catch (e2: Exception) {
-                        Log.e(TAG, "Bundled binary version check also failed", e2)
-                    }
-                }
-            }
-            Log.e(TAG, "Error getting version", e)
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting version", e)
-            null
         }
+
+        // Ensure the binary is executable before trying to run it
+        if (binaryFile.exists() && !binaryFile.canExecute()) {
+            Log.d(TAG, "Binary exists but not executable, attempting to fix: ${binaryFile.absolutePath}")
+            makeExecutable(binaryFile)
+        }
+
+        if (!binaryFile.canExecute()) {
+            Log.e(TAG, "Binary is not executable after fix attempt: ${binaryFile.absolutePath}")
+            return null
+        }
+
+        val binaryPath = binaryFile.absolutePath
+        Log.d(TAG, "Getting version from: $binaryPath")
+
+        // Try 1: Direct execution
+        try {
+            return runVersionCommandDirect(binaryPath)
+        } catch (e: java.io.IOException) {
+            if (e.message?.contains("Permission denied") != true) {
+                Log.e(TAG, "Error getting version", e)
+                return null
+            }
+            Log.w(TAG, "Direct execution blocked (Android 10+ SELinux), trying linker trick")
+        }
+
+        // Try 2: System linker trick — execute via /system/bin/linker64
+        // The linker loads the binary via mmap(PROT_EXEC), bypassing execute_no_trans denial.
+        val linkerPath = getSystemLinkerPath()
+        if (linkerPath != null) {
+            try {
+                val version = runVersionCommandViaLinker(linkerPath, binaryPath)
+                if (version != null) {
+                    Log.d(TAG, "Linker trick succeeded for version detection: $version")
+                    return version
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Linker trick failed for version detection", e)
+            }
+        }
+
+        Log.w(TAG, "All version detection methods failed for: $binaryPath")
+        return null
     }
 
     /**
-     * Execute the binary with --version and parse the version string from output.
+     * Execute the binary directly with --version and parse the version string.
+     * Throws IOException on Permission Denied (Android 10+ noexec).
      */
-    private fun runVersionCommand(binaryPath: String): String? {
+    private fun runVersionCommandDirect(binaryPath: String): String? {
         Log.d(TAG, "Running version command: $binaryPath --version")
         val process = ProcessBuilder(binaryPath, "--version")
             .redirectErrorStream(true)
@@ -186,7 +233,31 @@ class MonerodBinaryManager(private val context: Context) {
         val completed = process.waitFor(10, TimeUnit.SECONDS)
         Log.d(TAG, "Version output: $output, completed: $completed")
 
-        // Parse version from output like "Monero 'Fluorine Fermi' (v0.18.3.1-release)"
+        return parseVersionFromOutput(output)
+    }
+
+    /**
+     * Execute a binary via the system linker to bypass noexec/SELinux restrictions.
+     * The linker loads the binary via mmap(PROT_EXEC) instead of execve().
+     */
+    private fun runVersionCommandViaLinker(linkerPath: String, binaryPath: String): String? {
+        Log.d(TAG, "Running version via linker: $linkerPath $binaryPath --version")
+        val process = ProcessBuilder(linkerPath, binaryPath, "--version")
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val completed = process.waitFor(10, TimeUnit.SECONDS)
+        Log.d(TAG, "Linker version output: $output, completed: $completed")
+
+        return parseVersionFromOutput(output)
+    }
+
+    /**
+     * Parse version string from monerod output.
+     * Matches patterns like "Monero 'Fluorine Fermi' (v0.18.3.1-release)"
+     */
+    private fun parseVersionFromOutput(output: String): String? {
         val versionRegex = """v(\d+\.\d+\.\d+\.\d+)""".toRegex()
         return versionRegex.find(output)?.groupValues?.get(1)
     }

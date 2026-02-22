@@ -147,13 +147,44 @@ class MonerodProcess(private val context: Context) {
                 process = processBuilder.start()
                 Log.d(TAG, "Process started successfully, isAlive: ${process?.isAlive}")
             } catch (e: java.io.IOException) {
-                // On Android 10+, app data directories may have noexec mount flag.
-                // The writable binary (from update) can't be executed despite chmod 755.
-                // Fall back to the bundled binary from nativeLibDir which has proper execute permissions.
-                if (e.message?.contains("Permission denied") == true) {
+                // On Android 10+, SELinux denies execute_no_trans for app_data_file,
+                // blocking execve() on binaries in the app's data directory.
+                // Java's canExecute() checks file permission bits but NOT SELinux policy,
+                // so the binary appears executable but the kernel blocks it with error=13.
+                if (e.message?.contains("Permission denied") != true) {
+                    Log.e(TAG, "Failed to start process", e)
+                    return@withContext Result.failure(e)
+                }
+
+                Log.w(TAG, "Direct execution blocked (Android 10+ SELinux), trying linker trick")
+
+                // Fallback 1: System linker trick — execute via /system/bin/linker64.
+                // The linker loads the binary via mmap(PROT_EXEC) which bypasses the
+                // execute_no_trans denial, since SELinux grants the execute (mmap) permission.
+                val linkerPath = MonerodBinaryManager.getSystemLinkerPath()
+                if (linkerPath != null) {
+                    try {
+                        val linkerCommand = mutableListOf(linkerPath)
+                        linkerCommand.addAll(command)
+                        Log.d(TAG, "Linker trick command: ${linkerCommand.joinToString(" ")}")
+                        val linkerBuilder = ProcessBuilder(linkerCommand)
+                            .directory(dataDir)
+                            .redirectErrorStream(true)
+                        linkerBuilder.environment()["HOME"] = context.filesDir.absolutePath
+                        linkerBuilder.environment()["TMPDIR"] = context.cacheDir.absolutePath
+                        process = linkerBuilder.start()
+                        Log.d(TAG, "Linker trick started successfully, isAlive: ${process?.isAlive}")
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "Linker trick failed, falling back to bundled binary", e2)
+                        process = null
+                    }
+                }
+
+                // Fallback 2: Bundled binary from nativeLibDir (always executable).
+                if (process == null) {
                     val bundledBinary = storageManager.getNativeLibMonerodPath()
                     if (bundledBinary != null && bundledBinary.exists()) {
-                        Log.w(TAG, "Cannot execute updated binary (noexec mount), falling back to bundled: ${bundledBinary.absolutePath}")
+                        Log.w(TAG, "Falling back to bundled binary: ${bundledBinary.absolutePath}")
                         command[0] = bundledBinary.absolutePath
                         Log.d(TAG, "Fallback command: ${command.joinToString(" ")}")
                         val fallbackBuilder = ProcessBuilder(command)
@@ -172,9 +203,6 @@ class MonerodProcess(private val context: Context) {
                         Log.e(TAG, "No bundled binary available for fallback")
                         return@withContext Result.failure(e)
                     }
-                } else {
-                    Log.e(TAG, "Failed to start process", e)
-                    return@withContext Result.failure(e)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start process", e)
