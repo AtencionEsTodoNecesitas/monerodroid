@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sevendeuce.monerodroid.data.NodeState
@@ -362,16 +363,21 @@ fun UpdateBanner(
             .fillMaxWidth()
             .padding(bottom = 12.dp)
             .drawBehind {
+                val cornerRadius = 12.dp.toPx()
                 drawRect(
                     color = accentColor,
-                    size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)
+                    topLeft = Offset(0f, cornerRadius),
+                    size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height - (cornerRadius * 2))
                 )
             },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(
-            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             when (updateStatus) {
                 is UpdateStatus.Available -> {
@@ -417,7 +423,9 @@ fun UpdateBanner(
                         color = MoneroOrange,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
@@ -434,13 +442,15 @@ fun UpdateBanner(
                         Text(
                             text = "${String.format("%.1f", updateStatus.downloadedMb)} / ${String.format("%.1f", updateStatus.totalMb)} MB",
                             color = TextGray,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
 
                 is UpdateStatus.Extracting -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         CircularProgressIndicator(
                             color = MoneroOrange,
                             modifier = Modifier.size(16.dp),
@@ -1040,7 +1050,9 @@ fun BinaryStatusCard(
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             when (status) {

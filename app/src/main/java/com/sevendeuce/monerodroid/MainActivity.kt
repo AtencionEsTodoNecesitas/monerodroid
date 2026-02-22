@@ -237,7 +237,10 @@ fun MoneroDroidApp(
                     onSettingsClick = viewModel::toggleSettings,
                     updateStatus = updateStatus,
                     onCheckForUpdate = viewModel::checkForUpdate,
-                    onUpdateMonerod = viewModel::updateMonerod,
+                    onUpdateMonerod = {
+                        viewModel.updateMonerod()
+                        viewModel.showSettings()
+                    },
                     onDismissUpdate = viewModel::resetUpdateStatus
                 )
             }

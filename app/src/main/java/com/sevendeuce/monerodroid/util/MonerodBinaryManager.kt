@@ -48,6 +48,31 @@ class MonerodBinaryManager(private val context: Context) {
         .readTimeout(300, TimeUnit.SECONDS)
         .build()
 
+    private fun savedVersionFile(): File = File(storageManager.getBinaryDir(), "version.txt")
+
+    /**
+     * Save the installed binary version to disk.
+     * Used as fallback when the binary can't be executed (e.g. noexec mount on Android 10+).
+     */
+    fun saveInstalledVersion(version: String) {
+        try {
+            savedVersionFile().writeText(version)
+            Log.d(TAG, "Saved installed version: $version")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save installed version", e)
+        }
+    }
+
+    private fun readSavedVersion(): String? {
+        return try {
+            val file = savedVersionFile()
+            if (file.exists()) file.readText().trim().takeIf { it.isNotEmpty() } else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read saved version", e)
+            null
+        }
+    }
+
     fun isBinaryInstalled(): Boolean {
         // Check native lib directory first (bundled binary)
         val nativeLib = storageManager.getNativeLibMonerodPath()
@@ -78,21 +103,50 @@ class MonerodBinaryManager(private val context: Context) {
     fun getBinaryVersion(): String? {
         if (!isBinaryInstalled()) return null
 
+        // Retry up to 3 times — handles post-update race conditions
+        // where the binary may not be immediately ready after extraction
+        repeat(3) { attempt ->
+            val version = tryGetBinaryVersion()
+            if (version != null) {
+                // Cache successful detection for future fallback
+                saveInstalledVersion(version)
+                return version
+            }
+            if (attempt < 2) {
+                Log.d(TAG, "getBinaryVersion attempt ${attempt + 1} failed, retrying in 500ms")
+                Thread.sleep(500)
+            }
+        }
+
+        // Fallback: read saved version from disk
+        // This handles cases where the binary can't be executed
+        // (e.g. noexec mount on Android 10+ data directory)
+        val saved = readSavedVersion()
+        if (saved != null) {
+            Log.d(TAG, "Using saved version as fallback: $saved")
+            return saved
+        }
+
+        Log.w(TAG, "getBinaryVersion failed after 3 attempts and no saved version")
+        return null
+    }
+
+    private fun tryGetBinaryVersion(): String? {
         return try {
             val binaryFile = storageManager.getMonerodBinaryPath()
-            
+
             // Ensure the binary is executable before trying to run it
             if (binaryFile.exists() && !binaryFile.canExecute()) {
                 Log.d(TAG, "Binary exists but not executable, attempting to fix: ${binaryFile.absolutePath}")
                 makeExecutable(binaryFile)
             }
-            
+
             val binaryPath = binaryFile.absolutePath
             if (!binaryFile.canExecute()) {
                 Log.e(TAG, "Binary is not executable after fix attempt: $binaryPath")
                 return null
             }
-            
+
             Log.d(TAG, "Getting version from: $binaryPath")
 
             val process = ProcessBuilder(binaryPath, "--version")
@@ -435,8 +489,7 @@ class MonerodBinaryManager(private val context: Context) {
      * Uses the Monero downloads page to check latest version
      */
     suspend fun checkForUpdate(): UpdateStatus = withContext(Dispatchers.IO) {
-        val currentVersion =
-            getBinaryVersion() ?: return@withContext UpdateStatus.Error("Cannot determine current version")
+        val currentVersion = getBinaryVersion() // May be null — that's OK
 
         try {
             // Fetch the latest version from getmonero.org downloads page
@@ -454,6 +507,11 @@ class MonerodBinaryManager(private val context: Context) {
 
             if (latestVersion == null) {
                 UpdateStatus.Error("Could not determine latest version")
+            } else if (currentVersion == null) {
+                // Binary is installed but version can't be determined (e.g. noexec, x86 emulator)
+                // Still offer the update — user can re-download to fix the binary
+                Log.w(TAG, "Current version unknown, offering update to $latestVersion")
+                UpdateStatus.Available("unknown", latestVersion)
             } else if (isNewerVersion(latestVersion, currentVersion)) {
                 UpdateStatus.Available(currentVersion, latestVersion)
             } else {

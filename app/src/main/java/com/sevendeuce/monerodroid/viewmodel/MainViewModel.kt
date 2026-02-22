@@ -50,6 +50,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
 
+    // Track the version we're updating to, so we can save it on success
+    private var pendingUpdateVersion: String? = null
+
     val useExternalStorage = configManager.useExternalStorage.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -134,6 +137,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Observe download service status
         viewModelScope.launch {
             BinaryDownloadService.binaryStatusFlow.collect { status ->
+                // The service's static initial value is NotInstalled.
+                // Don't let it overwrite our accurate check from checkBinaryStatus()
+                // which correctly detects the bundled binary in nativeLibDir.
+                if (status is BinaryStatus.NotInstalled && binaryManager.isBinaryInstalled()) {
+                    return@collect
+                }
                 _binaryStatus.value = status
                 if (status is BinaryStatus.Installed) {
                     checkBinaryStatus()
@@ -144,6 +153,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             BinaryDownloadService.updateStatusFlow.collect { status ->
                 _updateStatus.value = status
                 if (status is UpdateStatus.Success) {
+                    // Save the version we just updated to before re-checking
+                    pendingUpdateVersion?.let { version ->
+                        binaryManager.saveInstalledVersion(version)
+                        pendingUpdateVersion = null
+                    }
                     checkBinaryStatus()
                 }
             }
@@ -218,9 +232,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Update node version on IO thread (getBinaryVersion runs a process)
         viewModelScope.launch(Dispatchers.IO) {
             val version = binaryManager.getBinaryVersion()
-            if (version != null) {
-                _nodeState.update { it.copy(nodeVersion = version) }
-            }
+            // Always update — clear stale version if detection fails
+            _nodeState.update { it.copy(nodeVersion = version ?: "") }
         }
     }
 
@@ -479,6 +492,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _showSettings.value = !_showSettings.value
     }
 
+    fun showSettings() {
+        _showSettings.value = true
+    }
+
     fun hideSettings() {
         _showSettings.value = false
     }
@@ -503,6 +520,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _updateStatus.value = UpdateStatus.Error("Stop the node before updating")
             return
         }
+        // Capture the version we're updating to before the status changes
+        pendingUpdateVersion = (_updateStatus.value as? UpdateStatus.Available)?.latestVersion
         BinaryDownloadService.startUpdate(context)
     }
 
