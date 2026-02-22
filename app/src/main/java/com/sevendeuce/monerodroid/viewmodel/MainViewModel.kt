@@ -17,6 +17,7 @@ import java.net.NetworkInterface
 import com.sevendeuce.monerodroid.data.NodeState
 import com.sevendeuce.monerodroid.data.StorageLocation
 import com.sevendeuce.monerodroid.service.NodeService
+import com.sevendeuce.monerodroid.service.BinaryDownloadService
 import com.sevendeuce.monerodroid.util.*
 import com.sevendeuce.monerodroid.util.UpdateStatus
 import kotlinx.coroutines.*
@@ -129,6 +130,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateLocalIpAddress()
         initRpcCredentialsAndStartPolling()
         checkArchitecture()
+
+        // Observe download service status
+        viewModelScope.launch {
+            BinaryDownloadService.binaryStatusFlow.collect { status ->
+                _binaryStatus.value = status
+                if (status is BinaryStatus.Installed) {
+                    checkBinaryStatus()
+                }
+            }
+        }
+        viewModelScope.launch {
+            BinaryDownloadService.updateStatusFlow.collect { status ->
+                _updateStatus.value = status
+                if (status is UpdateStatus.Success) {
+                    checkBinaryStatus()
+                }
+            }
+        }
     }
 
     private fun initRpcCredentialsAndStartPolling() {
@@ -196,9 +215,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             BinaryStatus.NotInstalled
         }
 
-        // Update node version if available
-        binaryManager.getBinaryVersion()?.let { version ->
-            _nodeState.update { it.copy(nodeVersion = version) }
+        // Update node version on IO thread (getBinaryVersion runs a process)
+        viewModelScope.launch(Dispatchers.IO) {
+            val version = binaryManager.getBinaryVersion()
+            if (version != null) {
+                _nodeState.update { it.copy(nodeVersion = version) }
+            }
         }
     }
 
@@ -308,16 +330,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun downloadBinary() {
-        viewModelScope.launch {
-            // Use installBinary which first tries bundled, then downloads
-            binaryManager.installBinary().collect { status ->
-                _binaryStatus.value = status
-
-                if (status is BinaryStatus.Installed) {
-                    checkBinaryStatus()
-                }
-            }
-        }
+        BinaryDownloadService.startDownload(context)
     }
 
     fun isBundledBinaryAvailable(): Boolean {
@@ -490,17 +503,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _updateStatus.value = UpdateStatus.Error("Stop the node before updating")
             return
         }
-
-        viewModelScope.launch {
-            binaryManager.updateBinary().collect { status ->
-                _updateStatus.value = status
-
-                if (status is UpdateStatus.Success) {
-                    // Refresh version info
-                    checkBinaryStatus()
-                }
-            }
-        }
+        BinaryDownloadService.startUpdate(context)
     }
 
     fun resetUpdateStatus() {

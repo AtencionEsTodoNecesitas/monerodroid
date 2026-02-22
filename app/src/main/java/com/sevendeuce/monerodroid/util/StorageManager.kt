@@ -91,8 +91,23 @@ class StorageManager(private val context: Context) {
     fun getMonerodBinaryPath(): File {
         // Prefer updated/copied binary in writable app data (takes precedence after updates)
         val copiedBinary = getWritableBinaryPath()
-        if (copiedBinary.exists() && copiedBinary.canExecute()) {
-            return copiedBinary
+        if (copiedBinary.exists()) {
+            if (copiedBinary.canExecute()) {
+                return copiedBinary
+            }
+            // Binary exists but not executable — attempt to fix permissions
+            copiedBinary.setExecutable(true, false)
+            if (copiedBinary.canExecute()) {
+                return copiedBinary
+            }
+            // Try chmod as fallback
+            try {
+                val process = Runtime.getRuntime().exec(arrayOf("chmod", "755", copiedBinary.absolutePath))
+                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                if (copiedBinary.canExecute()) {
+                    return copiedBinary
+                }
+            } catch (_: Exception) {}
         }
         // Fall back to bundled binary in native lib dir
         val nativeLibDir = context.applicationInfo.nativeLibraryDir

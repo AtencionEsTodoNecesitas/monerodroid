@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sevendeuce.monerodroid.ui.screens.MainScreen
 import com.sevendeuce.monerodroid.ui.screens.SettingsScreen
 import com.sevendeuce.monerodroid.ui.theme.*
+import com.sevendeuce.monerodroid.util.BinaryStatus
 import com.sevendeuce.monerodroid.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
@@ -169,6 +170,13 @@ fun MoneroDroidApp(
     val torEnabled by viewModel.torEnabled.collectAsState()
     val onionAddress by viewModel.onionAddress.collectAsState()
 
+    // Auto-check for monerod updates on app launch
+    LaunchedEffect(Unit) {
+        if (binaryStatus is BinaryStatus.Installed) {
+            viewModel.checkForUpdate()
+        }
+    }
+
     // Handle back button when in settings
     BackHandler(enabled = showSettings) {
         viewModel.hideSettings()
@@ -226,7 +234,11 @@ fun MoneroDroidApp(
                         }
                     },
                     onDownloadBinary = viewModel::downloadBinary,
-                    onSettingsClick = viewModel::toggleSettings
+                    onSettingsClick = viewModel::toggleSettings,
+                    updateStatus = updateStatus,
+                    onCheckForUpdate = viewModel::checkForUpdate,
+                    onUpdateMonerod = viewModel::updateMonerod,
+                    onDismissUpdate = viewModel::resetUpdateStatus
                 )
             }
         }

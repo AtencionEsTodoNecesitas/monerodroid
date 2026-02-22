@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.sevendeuce.monerodroid.data.NodeState
 import com.sevendeuce.monerodroid.ui.theme.*
 import com.sevendeuce.monerodroid.util.BinaryStatus
+import com.sevendeuce.monerodroid.util.UpdateStatus
 
 @Composable
 fun MainScreen(
@@ -48,7 +50,11 @@ fun MainScreen(
     onStorageToggle: (Boolean) -> Unit,
     onStartStopToggle: () -> Unit,
     onDownloadBinary: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    updateStatus: UpdateStatus = UpdateStatus.Idle,
+    onCheckForUpdate: () -> Unit = {},
+    onUpdateMonerod: () -> Unit = {},
+    onDismissUpdate: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     var showStorageDialog by remember { mutableStateOf(false) }
@@ -127,6 +133,13 @@ fun MainScreen(
                     )
                 }
             }
+
+            // Update notification banner
+            UpdateBanner(
+                updateStatus = updateStatus,
+                onUpdate = onUpdateMonerod,
+                onDismiss = onDismissUpdate
+            )
 
             // Binary Status / Download Section
             if (binaryStatus !is BinaryStatus.Installed) {
@@ -314,6 +327,194 @@ fun MainScreen(
                         fontSize = 14.sp
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun UpdateBanner(
+    updateStatus: UpdateStatus,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    // Only show for actionable states
+    val shouldShow = when (updateStatus) {
+        is UpdateStatus.Available,
+        is UpdateStatus.Downloading,
+        is UpdateStatus.Progress,
+        is UpdateStatus.Extracting,
+        is UpdateStatus.Success,
+        is UpdateStatus.Error -> true
+        else -> false
+    }
+
+    if (!shouldShow) return
+
+    val accentColor = when (updateStatus) {
+        is UpdateStatus.Success -> SuccessGreen
+        is UpdateStatus.Error -> ErrorRed
+        else -> MoneroOrange
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .drawBehind {
+                drawRect(
+                    color = accentColor,
+                    size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)
+                )
+            },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBackground)
+    ) {
+        Column(
+            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)
+        ) {
+            when (updateStatus) {
+                is UpdateStatus.Available -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "UPDATE AVAILABLE",
+                                color = MoneroOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${updateStatus.currentVersion} → ${updateStatus.latestVersion}",
+                                color = TextGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = onUpdate,
+                            colors = ButtonDefaults.buttonColors(containerColor = MoneroOrange),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text("Update", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                is UpdateStatus.Downloading, is UpdateStatus.Progress -> {
+                    val progress = if (updateStatus is UpdateStatus.Progress) {
+                        updateStatus.progress
+                    } else 0
+
+                    Text(
+                        text = "UPDATING...",
+                        color = MoneroOrange,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MoneroOrange,
+                        trackColor = ProgressBackground
+                    )
+                    if (updateStatus is UpdateStatus.Progress) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${String.format("%.1f", updateStatus.downloadedMb)} / ${String.format("%.1f", updateStatus.totalMb)} MB",
+                            color = TextGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                is UpdateStatus.Extracting -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            color = MoneroOrange,
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "EXTRACTING...",
+                            color = MoneroOrange,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                is UpdateStatus.Success -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "UPDATE COMPLETE",
+                            color = SuccessGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text("Done", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                is UpdateStatus.Error -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "UPDATE FAILED",
+                                color = ErrorRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = updateStatus.message,
+                                color = TextGray,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(containerColor = CardBackgroundLight),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text("Dismiss", color = TextWhite, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                else -> {}
             }
         }
     }

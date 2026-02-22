@@ -79,7 +79,20 @@ class MonerodBinaryManager(private val context: Context) {
         if (!isBinaryInstalled()) return null
 
         return try {
-            val binaryPath = getBinaryPath()
+            val binaryFile = storageManager.getMonerodBinaryPath()
+            
+            // Ensure the binary is executable before trying to run it
+            if (binaryFile.exists() && !binaryFile.canExecute()) {
+                Log.d(TAG, "Binary exists but not executable, attempting to fix: ${binaryFile.absolutePath}")
+                makeExecutable(binaryFile)
+            }
+            
+            val binaryPath = binaryFile.absolutePath
+            if (!binaryFile.canExecute()) {
+                Log.e(TAG, "Binary is not executable after fix attempt: $binaryPath")
+                return null
+            }
+            
             Log.d(TAG, "Getting version from: $binaryPath")
 
             val process = ProcessBuilder(binaryPath, "--version")
